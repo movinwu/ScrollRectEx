@@ -8,7 +8,7 @@ namespace ScrollViewEx
     /// this item on demand.
     /// </summary>
     [RequireComponent(typeof(RectTransform))]
-    public class RecyclingListViewItem : MonoBehaviour
+    public class ScrollRectViewItem : MonoBehaviour
     {
         public VerticalScrollRect ParentRecyle { get; internal set; }
 

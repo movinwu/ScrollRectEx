@@ -13,7 +13,7 @@ namespace ScrollViewEx
     public class VerticalScrollRect : MonoBehaviour
     {
         [Header("所有item预制体")]
-        [SerializeField] private RecyclingListViewItem[] m_ChildPrefab;
+        [SerializeField] private ScrollRectViewItem[] m_ChildPrefab;
         [Header("所有item间隔")]
         [SerializeField] private float[] m_AllSpacing;
         [Header("回收距离")]
@@ -40,12 +40,12 @@ namespace ScrollViewEx
         /// <summary>
         /// 刷新元素.
         /// </summary>
-        private Action<RecyclingListViewItem> m_RefreshItemAction;
+        private Action<ScrollRectViewItem> m_RefreshItemAction;
 
         /// <summary>
         /// 回收元素
         /// </summary>
-        private Action<RecyclingListViewItem> m_RecycleItemAction;
+        private Action<ScrollRectViewItem> m_RecycleItemAction;
 
         /// <summary>
         /// 获取子物体预制体下标
@@ -64,8 +64,8 @@ namespace ScrollViewEx
         /// </summary>
         private bool m_ThisControlContent;
 
-        private LinkedList<RecyclingListViewItem> m_UsingItem = new LinkedList<RecyclingListViewItem>();
-        private List<Queue<RecyclingListViewItem>> m_PoolingItem = new List<Queue<RecyclingListViewItem>>();
+        private LinkedList<ScrollRectViewItem> m_UsingItem = new LinkedList<ScrollRectViewItem>();
+        private List<Queue<ScrollRectViewItem>> m_PoolingItem = new List<Queue<ScrollRectViewItem>>();
 
         /// <summary>
         /// 元素高度缓存
@@ -98,8 +98,8 @@ namespace ScrollViewEx
         /// <param name="initItemPos">初始化显示下标</param>
         public void StartScrollView(
             int itemCount,
-            Action<RecyclingListViewItem> refreshItemAction,
-            Action<RecyclingListViewItem> recycleItemAction,
+            Action<ScrollRectViewItem> refreshItemAction,
+            Action<ScrollRectViewItem> recycleItemAction,
             Func<int, int> getchildItemPrefabIndex = null,
             Func<int, int> getChildItemPaddingIndex = null,
             float initItemPos = 0)
@@ -137,7 +137,7 @@ namespace ScrollViewEx
                 for (int i = 0; i < m_ChildPrefab.Length; i++)
                 {
                     m_ChildPrefab[i].PrefabIndex = i;
-                    m_PoolingItem.Add(new Queue<RecyclingListViewItem>());
+                    m_PoolingItem.Add(new Queue<ScrollRectViewItem>());
 
                     if (m_ScrollDirection == EScrollDirection.Down2Up)
                     {
@@ -438,17 +438,17 @@ namespace ScrollViewEx
         /// </summary>
         /// <param name="index"></param>
         /// <returns></returns>
-        private RecyclingListViewItem NewSingleItem(int index)
+        private ScrollRectViewItem NewSingleItem(int index)
         {
             var prefabIndex = m_GetChildItemPrefabIndex(index);
-            RecyclingListViewItem item = null;
+            ScrollRectViewItem item = null;
             if (m_PoolingItem[prefabIndex].Count > 0)
             {
                 item = m_PoolingItem[prefabIndex].Dequeue();
             }
             else
             {
-                item = GameObject.Instantiate(m_ChildPrefab[prefabIndex].gameObject, m_ScrollRect.content).GetComponent<RecyclingListViewItem>();
+                item = GameObject.Instantiate(m_ChildPrefab[prefabIndex].gameObject, m_ScrollRect.content).GetComponent<ScrollRectViewItem>();
             }
             item.PrefabIndex = prefabIndex;
             item.CurIndex = index;
@@ -462,7 +462,7 @@ namespace ScrollViewEx
         /// <summary>
         /// 回收单个元素
         /// </summary>
-        private void RecycleSingleItem(RecyclingListViewItem item)
+        private void RecycleSingleItem(ScrollRectViewItem item)
         {
             item.gameObject.SetActive(false);
             m_RecycleItemAction?.Invoke(item);

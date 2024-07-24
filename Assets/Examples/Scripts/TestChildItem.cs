@@ -3,7 +3,7 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
-public class TestChildItem : RecyclingListViewItem {
+public class TestChildItem : ScrollRectViewItem {
     public Text leftText;
     public Text rightText1;
     public Text rightText2;

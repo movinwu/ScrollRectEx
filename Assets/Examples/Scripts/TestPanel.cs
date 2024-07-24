@@ -75,7 +75,7 @@ public class TestPanel : MonoBehaviour {
         }
     }
 
-    private void PopulateItem(RecyclingListViewItem item) 
+    private void PopulateItem(ScrollRectViewItem item) 
     {
         var child = item as TestChildItem;
         child.ChildData = data[item.CurIndex];
