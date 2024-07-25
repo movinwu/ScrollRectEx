@@ -7,60 +7,65 @@ using UnityEngine.UI;
 namespace ScrollViewEx
 {
     /// <summary>
-    /// ÊúÖ±¹ö¶¯Ìõ
+    /// ç«–ç›´æ»šåŠ¨æ¡
     /// </summary>
     [RequireComponent(typeof(ScrollRect))]
     public class VerticalScrollRect : MonoBehaviour
     {
-        [Header("ËùÓĞitemÔ¤ÖÆÌå")]
+        [Header("æ‰€æœ‰itemé¢„åˆ¶ä½“")]
         [SerializeField] private ScrollRectViewItem[] m_ChildPrefab;
-        [Header("ËùÓĞitem¼ä¸ô")]
-        [SerializeField] private float[] m_AllSpacing;
-        [Header("»ØÊÕ¾àÀë")]
+        [Header("æ‰€æœ‰itemé—´éš”")]
+        [SerializeField] private float[] m_AllSpacing = new float[] { 0f, };
+        [Header("å›æ”¶è·ç¦»")]
         [SerializeField] private float m_PreAllocLength = 200;
 
-        [Header("¹ö¶¯·½Ïò")]
+        [Header("æ»šåŠ¨æ–¹å‘")]
         [SerializeField] private EScrollDirection m_ScrollDirection;
 
         /// <summary>
-        /// ÔªËØÊıÁ¿
+        /// å…ƒç´ æ•°é‡
         /// </summary>
         private int m_ItemCount;
 
         /// <summary>
-        /// µ±Ç°µÚÒ»¸öÔªËØÏÂ±ê
+        /// å½“å‰ç¬¬ä¸€ä¸ªå…ƒç´ ä¸‹æ ‡
         /// </summary>
         private int m_CurItemIndex;
 
         /// <summary>
-        /// µ±Ç°ÔªËØÎ»ÖÃ
+        /// å½“å‰å…ƒç´ ä½ç½®
         /// </summary>
         private float m_CurItemPos;
 
         /// <summary>
-        /// Ë¢ĞÂÔªËØ.
+        /// åˆ·æ–°å…ƒç´ .
         /// </summary>
         private Action<ScrollRectViewItem> m_RefreshItemAction;
 
         /// <summary>
-        /// »ØÊÕÔªËØ
+        /// å›æ”¶å…ƒç´ 
         /// </summary>
         private Action<ScrollRectViewItem> m_RecycleItemAction;
 
         /// <summary>
-        /// »ñÈ¡×ÓÎïÌåÔ¤ÖÆÌåÏÂ±ê
+        /// è·å–å­ç‰©ä½“é¢„åˆ¶ä½“ä¸‹æ ‡
         /// </summary>
         private Func<int, int> m_GetChildItemPrefabIndex;
 
         /// <summary>
-        /// »ñÈ¡±ß¾àÏÂ±ê
+        /// è·å–è¾¹è·ä¸‹æ ‡
         /// </summary>
         private Func<int, int> m_GetChildItemPaddingIndex;
+
+        /// <summary>
+        /// è·å–itemé«˜åº¦
+        /// </summary>
+        private Func<int, float> m_GetItemHeight;
 
         private ScrollRect m_ScrollRect;
 
         /// <summary>
-        /// µ±Ç°ÔªËØÔÚ¿ØÖÆcontent±ä»¯
+        /// å½“å‰å…ƒç´ åœ¨æ§åˆ¶contentå˜åŒ–
         /// </summary>
         private bool m_ThisControlContent;
 
@@ -68,50 +73,52 @@ namespace ScrollViewEx
         private List<Queue<ScrollRectViewItem>> m_PoolingItem = new List<Queue<ScrollRectViewItem>>();
 
         /// <summary>
-        /// ÔªËØ¸ß¶È»º´æ
+        /// å…ƒç´ é«˜åº¦ç¼“å­˜
         /// </summary>
         private List<float> m_ItemHeightCache = new List<float>();
 
         /// <summary>
-        /// content¸ß¶È
+        /// contenté«˜åº¦
         /// </summary>
         private float m_ContentHeight;
 
         /// <summary>
-        /// viewportµÄrect
+        /// viewportçš„rect
         /// </summary>
         private Rect m_ViewportRect;
 
         /// <summary>
-        /// ×Ô¶¯¹ö¶¯¶¯»­Ğ­³Ì
+        /// è‡ªåŠ¨æ»šåŠ¨åŠ¨ç”»åç¨‹
         /// </summary>
         private Coroutine m_AutoScrollAnimation;
 
         /// <summary>
-        /// ¿ªÊ¼¹ö¶¯Ìõ
+        /// å¼€å§‹æ»šåŠ¨æ¡
         /// </summary>
         /// <param name="itemCount"></param>
         /// <param name="refreshItemAction"></param>
         /// <param name="recycleItemAction"></param>
         /// <param name="getchildItemPrefabIndex"></param>
         /// <param name="getChildItemPaddingIndex"></param>
-        /// <param name="initItemPos">³õÊ¼»¯ÏÔÊ¾ÏÂ±ê</param>
+        /// <param name="getItemHeight">è·å–itemé«˜åº¦</param>
+        /// <param name="initItemPos">åˆå§‹åŒ–æ˜¾ç¤ºä¸‹æ ‡</param>
         public void StartScrollView(
             int itemCount,
             Action<ScrollRectViewItem> refreshItemAction,
             Action<ScrollRectViewItem> recycleItemAction,
             Func<int, int> getchildItemPrefabIndex = null,
             Func<int, int> getChildItemPaddingIndex = null,
+            Func<int, float> getItemHeight = null,
             float initItemPos = 0)
         {
             if (itemCount == 0)
             {
-                Debug.LogError("ÔªËØÊıÁ¿²»ÄÜÎª0");
+                Debug.LogError("å…ƒç´ æ•°é‡ä¸èƒ½ä¸º0");
                 return;
             }
 
             m_ScrollRect = GetComponent<ScrollRect>();
-            //ÉèÖÃ»¬¶¯·½Ïò
+            //è®¾ç½®æ»‘åŠ¨æ–¹å‘
             m_ScrollRect.vertical = true;
             m_ScrollRect.horizontal = false;
             if (null != m_ScrollRect.horizontalScrollbar)
@@ -122,16 +129,16 @@ namespace ScrollViewEx
 
             if (null == m_ChildPrefab || m_ChildPrefab.Length == 0)
             {
-                Debug.LogError("Ã»ÓĞÖ¸¶¨Ô¤ÖÆÌå");
+                Debug.LogError("æ²¡æœ‰æŒ‡å®šé¢„åˆ¶ä½“");
                 return;
             }
             if (null == m_AllSpacing || m_AllSpacing.Length == 0)
             {
-                Debug.LogError("Ã»ÓĞÖ¸¶¨±ß¾à");
+                Debug.LogError("æ²¡æœ‰æŒ‡å®šè¾¹è·");
                 return;
             }
 
-            //µÚÒ»´Î¿ªÆô¹ö¶¯Ìõ
+            //ç¬¬ä¸€æ¬¡å¼€å¯æ»šåŠ¨æ¡
             if (m_PoolingItem.Count == 0)
             {
                 for (int i = 0; i < m_ChildPrefab.Length; i++)
@@ -155,11 +162,11 @@ namespace ScrollViewEx
             }
             else
             {
-                //»ØÊÕËùÓĞitem
+                //å›æ”¶æ‰€æœ‰item
                 Clear();
             }
 
-            //Òş²ØËùÓĞÔ¤ÖÆÌå
+            //éšè—æ‰€æœ‰é¢„åˆ¶ä½“
             for (int i = 0; i < m_ChildPrefab.Length; i++)
             {
                 m_ChildPrefab[i].gameObject.SetActive(false);
@@ -169,6 +176,7 @@ namespace ScrollViewEx
             m_RecycleItemAction = recycleItemAction;
             m_GetChildItemPrefabIndex = getchildItemPrefabIndex;
             m_GetChildItemPaddingIndex = getChildItemPaddingIndex;
+            m_GetItemHeight = getItemHeight;
             if (null == m_GetChildItemPrefabIndex)
             {
                 m_GetChildItemPrefabIndex = DefaultGetIndex;
@@ -176,6 +184,10 @@ namespace ScrollViewEx
             if (null == m_GetChildItemPaddingIndex)
             {
                 m_GetChildItemPaddingIndex = DefaultGetIndex;
+            }
+            if (null == m_GetItemHeight)
+            {
+                m_GetItemHeight = DefaultGetItemHeight;
             }
 
             m_ItemCount = Mathf.Max(0, itemCount);
@@ -186,10 +198,10 @@ namespace ScrollViewEx
             m_ScrollRect.onValueChanged.AddListener(OnScrollRectValueChange);
 
 
-            //¸üĞÂcontent
+            //æ›´æ–°content
             m_ThisControlContent = true;
             UpdateHeightCache();
-            float initPercent = m_CurItemPos / m_ItemCount;
+            float initPercent = Mathf.Abs(CalcItemRectPos(m_CurItemPos)) / m_ContentHeight;
             UpdateViewportRect();
             UpdateContent(initPercent);
             UpdateChildItem(initPercent);
@@ -198,22 +210,34 @@ namespace ScrollViewEx
         }
 
         /// <summary>
-        /// Ä¬ÈÏ»ñÈ¡ÏÂ±êº¯Êı
+        /// é»˜è®¤è·å–ä¸‹æ ‡å‡½æ•°
         /// </summary>
         /// <param name="itemIndex"></param>
         /// <returns></returns>
         private int DefaultGetIndex(int itemIndex) => 0;
 
         /// <summary>
-        /// µ±»¬¶¯Ê±
+        /// é»˜è®¤è·å–itemé«˜åº¦
+        /// </summary>
+        /// <param name="itemIndex"></param>
+        /// <returns></returns>
+        private float DefaultGetItemHeight(int itemIndex)
+        {
+            var prefabIndex = m_GetChildItemPrefabIndex(itemIndex);
+            var prefab = m_ChildPrefab[prefabIndex];
+            return prefab.RectTransform.rect.height;
+        }
+
+        /// <summary>
+        /// å½“æ»‘åŠ¨æ—¶
         /// </summary>
         /// <param name="position"></param>
         private void OnScrollRectValueChange(Vector2 position)
         {
-            //¸üĞÂµ±Ç°Î»ÖÃ
+            //æ›´æ–°å½“å‰ä½ç½®
             m_CurItemPos = position.y * m_ItemCount;
 
-            //µ±Ç°ÔªËØ¿ØÖÆscrollviewÊ±,¼àÌı²»ÉúĞ§
+            //å½“å‰å…ƒç´ æ§åˆ¶scrollviewæ—¶,ç›‘å¬ä¸ç”Ÿæ•ˆ
             if (m_ThisControlContent)
             {
                 return;
@@ -226,28 +250,28 @@ namespace ScrollViewEx
         }
 
         /// <summary>
-        /// ¸üĞÂviewportµÄRect
+        /// æ›´æ–°viewportçš„Rect
         /// </summary>
         private void UpdateViewportRect()
         {
-            //¼ì²éscrollrectÖĞscrollbarµÄÉèÖÃ,²»Ö§³ÖVisibilityÑ¡ÏîÎªAutoHideAndExpandViewport
-            //Õâ¸öÑ¡Ïî»áĞŞ¸ÄviewportµÄrecttransform,µ¼ÖÂµÚ¶şÖ¡²ÅÄÜ»ñÈ¡µ½viewportµÄÕıÈ·³ß´ç
-            //ÕâÀï¿ÉÒÔÏë°ì·¨ÊÖ¶¯¼ÆËãviewportRect,ÒÔ½â³ı¶ÔscrollbarµÄVisibilityÑ¡ÏîµÄÏŞÖÆ
+            //æ£€æŸ¥scrollrectä¸­scrollbarçš„è®¾ç½®,ä¸æ”¯æŒVisibilityé€‰é¡¹ä¸ºAutoHideAndExpandViewport
+            //è¿™ä¸ªé€‰é¡¹ä¼šä¿®æ”¹viewportçš„recttransform,å¯¼è‡´ç¬¬äºŒå¸§æ‰èƒ½è·å–åˆ°viewportçš„æ­£ç¡®å°ºå¯¸
+            //è¿™é‡Œå¯ä»¥æƒ³åŠæ³•æ‰‹åŠ¨è®¡ç®—viewportRect,ä»¥è§£é™¤å¯¹scrollbarçš„Visibilityé€‰é¡¹çš„é™åˆ¶
             if (null != m_ScrollRect.verticalScrollbar && m_ScrollRect.verticalScrollbarVisibility == ScrollRect.ScrollbarVisibility.AutoHideAndExpandViewport)
             {
-                Debug.LogError("Vertical ScrollbarµÄVisibilityÑ¡Ïî²»Ö§³ÖAutoHideAndExpandViewport");
+                Debug.LogError("Vertical Scrollbarçš„Visibilityé€‰é¡¹ä¸æ”¯æŒAutoHideAndExpandViewport");
             }
 
             m_ViewportRect = m_ScrollRect.viewport.rect;
         }
 
         /// <summary>
-        /// ¸üĞÂcontent´óĞ¡ºÍÎ»ÖÃ
+        /// æ›´æ–°contentå¤§å°å’Œä½ç½®
         /// </summary>
-        /// <param name="curPos">µ±Ç°Î»ÖÃ,0-1</param>
+        /// <param name="curPos">å½“å‰ä½ç½®,0-1</param>
         private void UpdateContent(float curPos)
         {
-            //¸üĞÂcontent³ß´ç
+            //æ›´æ–°contentå°ºå¯¸
             var content = m_ScrollRect.content;
             if (m_ScrollDirection == EScrollDirection.Down2Up)
             {
@@ -255,7 +279,7 @@ namespace ScrollViewEx
                 content.anchorMax = new Vector2(0.5f, 0f);
                 content.pivot = new Vector2(0.5f, 0f);
                 content.sizeDelta = new Vector2(m_ViewportRect.width, m_ContentHeight);
-                content.anchoredPosition = new Vector2(0, CalcContentPos(curPos));
+                content.anchoredPosition = new Vector2(0, CalcContentRectPos(curPos));
             }
             else
             {
@@ -263,14 +287,14 @@ namespace ScrollViewEx
                 content.anchorMax = new Vector2(0.5f, 1f);
                 content.pivot = new Vector2(0.5f, 1f);
                 content.sizeDelta = new Vector2(m_ViewportRect.width, m_ContentHeight);
-                content.anchoredPosition = new Vector2(0, CalcContentPos(curPos));
+                content.anchoredPosition = new Vector2(0, CalcContentRectPos(curPos));
             }
         }
 
         /// <summary>
-        /// ¸üĞÂËùÓĞitemÎ»ÖÃ
+        /// æ›´æ–°æ‰€æœ‰itemä½ç½®
         /// </summary>
-        /// <param name="curPos">µ±Ç°Î»ÖÃ,0-1</param>
+        /// <param name="curPos">å½“å‰ä½ç½®,0-1</param>
         private void UpdateItemPosition(float curPos)
         {
             if (m_UsingItem.Count > 0)
@@ -280,11 +304,7 @@ namespace ScrollViewEx
                 {
                     var item = itemNode.Value;
                     var anchoredPos = item.RectTransform.anchoredPosition;
-                    anchoredPos.y = m_ItemHeightCache[item.CurIndex];
-                    if (m_ScrollDirection == EScrollDirection.Up2Down)
-                    {
-                        anchoredPos.y = -anchoredPos.y;
-                    }
+                    anchoredPos.y = CalcItemRectPos(item.CurIndex);
                     item.RectTransform.anchoredPosition = anchoredPos;
 
                     itemNode = itemNode.Next;
@@ -293,16 +313,16 @@ namespace ScrollViewEx
         }
 
         /// <summary>
-        /// ¸üĞÂÏÔÊ¾µÄitem¼¯ºÏ
+        /// æ›´æ–°æ˜¾ç¤ºçš„itemé›†åˆ
         /// </summary>
-        /// <param name="curPos">µ±Ç°Î»ÖÃ,0-1</param>
+        /// <param name="curPos">å½“å‰ä½ç½®,0-1</param>
         private void UpdateChildItem(float curPos)
         {
-            //µ±Ç°contentµÄÎ»ÖÃ
+            //å½“å‰contentçš„ä½ç½®
             var content = m_ScrollRect.content;
             var curHeight = content.anchoredPosition.y;
 
-            //Ìí¼ÓµÚÒ»¸öÔªËØ
+            //æ·»åŠ ç¬¬ä¸€ä¸ªå…ƒç´ 
             if (m_UsingItem.Count == 0)
             {
                 var item = NewSingleItem(m_CurItemIndex);
@@ -314,7 +334,7 @@ namespace ScrollViewEx
                 curHeight = -curHeight;
             }
 
-            //ÏòÇ°ĞÂÔö
+            //å‘å‰æ–°å¢
             var heightDownLimit = curHeight - m_PreAllocLength;
             bool operation = false;
             while (m_UsingItem.Count > 0)
@@ -322,7 +342,7 @@ namespace ScrollViewEx
                 var first = m_UsingItem.First.Value;
                 var index = first.CurIndex;
                 var height = m_ItemHeightCache[index];
-                //ĞÂÔö
+                //æ–°å¢
                 if (height > heightDownLimit && index > 0)
                 {
                     var item = NewSingleItem(index - 1);
@@ -333,7 +353,7 @@ namespace ScrollViewEx
 
                 var itemIndex = m_GetChildItemPrefabIndex(index);
                 height += m_ChildPrefab[itemIndex].RectTransform.rect.height;
-                //Ïú»Ù
+                //é”€æ¯
                 if (height < heightDownLimit && !operation)
                 {
                     RecycleSingleItem(first);
@@ -346,7 +366,7 @@ namespace ScrollViewEx
 
             curHeight += m_ViewportRect.height;
 
-            //ÏòºóĞÂÔö
+            //å‘åæ–°å¢
             var heightUpLimit = curHeight + m_PreAllocLength;
             operation = false;
             while (m_UsingItem.Count > 0)
@@ -355,7 +375,7 @@ namespace ScrollViewEx
                 var index = last.CurIndex;
 
                 var height = m_ItemHeightCache[index];
-                //Ïú»Ù
+                //é”€æ¯
                 if (height > heightUpLimit)
                 {
                     RecycleSingleItem(last);
@@ -366,7 +386,7 @@ namespace ScrollViewEx
 
                 var itemIndex = m_GetChildItemPrefabIndex(index);
                 height += m_ChildPrefab[itemIndex].RectTransform.rect.height;
-                //ĞÂÔö
+                //æ–°å¢
                 if (height < heightUpLimit && index < m_ItemCount - 1 && !operation)
                 {
                     var item = NewSingleItem(index + 1);
@@ -380,15 +400,14 @@ namespace ScrollViewEx
 
         private void UpdateHeightCache()
         {
-            //¸üĞÂ¸ß¶È»º´æ
+            //æ›´æ–°é«˜åº¦ç¼“å­˜
             m_ItemHeightCache.Clear();
             m_ContentHeight = 0;
             for (int i = 0; i < m_ItemCount; i++)
             {
                 m_ItemHeightCache.Add(m_ContentHeight);
 
-                var itemIndex = m_GetChildItemPrefabIndex(i);
-                m_ContentHeight += m_ChildPrefab[itemIndex].RectTransform.rect.height;
+                m_ContentHeight += m_GetItemHeight(i);
                 if (i != m_ItemCount - 1)
                 {
                     var paddingIndex = m_GetChildItemPaddingIndex(i);
@@ -398,11 +417,11 @@ namespace ScrollViewEx
         }
 
         /// <summary>
-        /// ¼ÆËãcontentÎ»ÖÃ
+        /// è®¡ç®—contentä½ç½®
         /// </summary>
-        /// <param name="percentPos">°Ù·Ö±È³ß´ç</param>
+        /// <param name="percentPos">ç™¾åˆ†æ¯”å°ºå¯¸</param>
         /// <returns></returns>
-        private float CalcContentPos(float percentPos)
+        private float CalcContentRectPos(float percentPos)
         {
             var height = m_ContentHeight * percentPos;
             if (m_ContentHeight > m_ViewportRect.height && height > m_ContentHeight - m_ViewportRect.height)
@@ -417,7 +436,26 @@ namespace ScrollViewEx
         }
 
         /// <summary>
-        /// ¿ìËÙÇå¿Õ
+        /// è®¡ç®—itemä¸ºæ­¢
+        /// </summary>
+        /// <param name="itemPos"></param>
+        /// <returns></returns>
+        private float CalcItemRectPos(float itemPos)
+        {
+            itemPos = Mathf.Clamp(itemPos, 0, m_ItemCount);
+            int itemIndex = Mathf.Clamp(Mathf.FloorToInt(itemPos), 0, m_ItemCount - 1);
+            var height = m_ItemHeightCache[itemIndex];
+            var itemHeight = m_GetItemHeight(itemIndex);
+            height += itemHeight * (itemPos - itemIndex);
+            if (m_ScrollDirection == EScrollDirection.Up2Down)
+            {
+                return -height;
+            }
+            return height;
+        }
+
+        /// <summary>
+        /// å¿«é€Ÿæ¸…ç©º
         /// </summary>
         public void Clear()
         {
@@ -434,7 +472,7 @@ namespace ScrollViewEx
         }
 
         /// <summary>
-        /// ĞÂ´´½¨µ¥¸öÔªËØ
+        /// æ–°åˆ›å»ºå•ä¸ªå…ƒç´ 
         /// </summary>
         /// <param name="index"></param>
         /// <returns></returns>
@@ -460,7 +498,7 @@ namespace ScrollViewEx
         }
 
         /// <summary>
-        /// »ØÊÕµ¥¸öÔªËØ
+        /// å›æ”¶å•ä¸ªå…ƒç´ 
         /// </summary>
         private void RecycleSingleItem(ScrollRectViewItem item)
         {
@@ -470,9 +508,9 @@ namespace ScrollViewEx
         }
 
         /// <summary>
-        /// Ë²¼äÌøÔ¾µ½Ö¸¶¨Î»ÖÃ
+        /// ç¬é—´è·³è·ƒåˆ°æŒ‡å®šä½ç½®
         /// </summary>
-        /// <param name="position">´Ó 0-ÔªËØ¸öÊı È¡Öµ</param>
+        /// <param name="position">ä» 0-å…ƒç´ ä¸ªæ•° å–å€¼</param>
         public void JumpTo(float position)
         {
             position = position % m_ItemCount;
@@ -481,19 +519,19 @@ namespace ScrollViewEx
                 position += m_ItemCount;
             }
 
-            //Á¢¼´ÖĞ¶Ïµ±Ç°×Ô¶¯¹ö¶¯µÄ¶¯»­
+            //ç«‹å³ä¸­æ–­å½“å‰è‡ªåŠ¨æ»šåŠ¨çš„åŠ¨ç”»
             StopAnimation();
 
-            StartScrollView(m_ItemCount, m_RefreshItemAction, m_RecycleItemAction, m_GetChildItemPrefabIndex, m_GetChildItemPaddingIndex, position);
+            StartScrollView(m_ItemCount, m_RefreshItemAction, m_RecycleItemAction, m_GetChildItemPrefabIndex, m_GetChildItemPaddingIndex, m_GetItemHeight, position);
         }
 
         /// <summary>
-        /// Ö¸¶¨ËÙ¶È¹ö¶¯µ½Ö¸¶¨Î»ÖÃ
+        /// æŒ‡å®šé€Ÿåº¦æ»šåŠ¨åˆ°æŒ‡å®šä½ç½®
         /// </summary>
-        /// <param name="targetPos">¹ö¶¯µÄÏÂ±êÎ»ÖÃ</param>
+        /// <param name="targetPos">æ»šåŠ¨çš„ä¸‹æ ‡ä½ç½®</param>
         /// <param name="speed"></param>
-        /// <param name="blockRaycasts">ÊÇ·ñÆÁ±Îµã»÷</param>
-        /// <param name="onScrollEnd">µ±¹ö¶¯Íê±Ï»Øµ÷</param>
+        /// <param name="blockRaycasts">æ˜¯å¦å±è”½ç‚¹å‡»</param>
+        /// <param name="onScrollEnd">å½“æ»šåŠ¨å®Œæ¯•å›è°ƒ</param>
         public void ScrollToBySpeed(float targetPos, float speed, bool blockRaycasts = true, Action onScrollEnd = null)
         {
             if (speed <= 0)
@@ -504,16 +542,16 @@ namespace ScrollViewEx
 
             StopAnimation();
 
-            //±ê×¼»¯Î»ÖÃ
-            var curContentPos = Mathf.Abs(CalcContentPos(m_CurItemPos / m_ItemCount));
-            var targetContentPos = Mathf.Abs(CalcContentPos(targetPos / m_ItemCount));
+            //æ ‡å‡†åŒ–ä½ç½®
+            var curContentPos = Mathf.Abs(CalcContentRectPos(m_CurItemPos / m_ItemCount));
+            var targetContentPos = Mathf.Abs(CalcContentRectPos(targetPos / m_ItemCount));
 
-            //¼ÆËã¹ö¶¯
+            //è®¡ç®—æ»šåŠ¨
             if (Mathf.Abs(curContentPos - targetContentPos) > 0.1f)
             {
                 var distance = targetContentPos - curContentPos;
                 var direction = m_ScrollDirection;
-                //¹ö¶¯·½Ïò·­×ª
+                //æ»šåŠ¨æ–¹å‘ç¿»è½¬
                 if (distance < 0)
                 {
                     if (direction == EScrollDirection.Down2Up)
@@ -546,12 +584,12 @@ namespace ScrollViewEx
         }
 
         /// <summary>
-        /// Ö¸¶¨Ê±¼ä¹ö¶¯µ½Ö¸¶¨Î»ÖÃ
+        /// æŒ‡å®šæ—¶é—´æ»šåŠ¨åˆ°æŒ‡å®šä½ç½®
         /// </summary>
         /// <param name="targetPos"></param>
         /// <param name="time"></param>
-        /// <param name="blockRaycasts">ÊÇ·ñÆÁ±Îµã»÷</param>
-        /// <param name="onScrollEnd">µ±¹ö¶¯Íê±Ï»Øµ÷</param>
+        /// <param name="blockRaycasts">æ˜¯å¦å±è”½ç‚¹å‡»</param>
+        /// <param name="onScrollEnd">å½“æ»šåŠ¨å®Œæ¯•å›è°ƒ</param>
         public void ScrollToByTime(float targetPos, float time, bool blockRaycasts = true, Action onScrollEnd = null)
         {
             if (time <= 0)
@@ -562,16 +600,16 @@ namespace ScrollViewEx
 
             StopAnimation();
 
-            //±ê×¼»¯Î»ÖÃ
-            var curContentPos = Mathf.Abs(CalcContentPos(m_CurItemPos / m_ItemCount));
-            var targetContentPos = Mathf.Abs(CalcContentPos(targetPos / m_ItemCount));
+            //æ ‡å‡†åŒ–ä½ç½®
+            var curContentPos = Mathf.Abs(CalcContentRectPos(m_CurItemPos / m_ItemCount));
+            var targetContentPos = Mathf.Abs(CalcContentRectPos(targetPos / m_ItemCount));
 
-            //¼ÆËã¹ö¶¯
+            //è®¡ç®—æ»šåŠ¨
             if (Mathf.Abs(curContentPos - targetContentPos) > 0.1f)
             {
                 var distance = targetContentPos - curContentPos;
                 var direction = m_ScrollDirection;
-                //¹ö¶¯·½Ïò·­×ª
+                //æ»šåŠ¨æ–¹å‘ç¿»è½¬
                 if (distance < 0)
                 {
                     if (direction == EScrollDirection.Down2Up)
@@ -604,11 +642,11 @@ namespace ScrollViewEx
         }
 
         /// <summary>
-        /// ¿ªÆô×Ô¶¯¹ö¶¯¶¯»­
+        /// å¼€å¯è‡ªåŠ¨æ»šåŠ¨åŠ¨ç”»
         /// </summary>
         /// <param name="speed"></param>
         /// <param name="time"></param>
-        /// <param name="scrollDirection">¹ö¶¯·½Ïò</param>
+        /// <param name="scrollDirection">æ»šåŠ¨æ–¹å‘</param>
         /// <param name="onScrollEnd"></param>
         private void StartAnimation(float speed, float time, EScrollDirection scrollDirection, Action onScrollEnd)
         {
@@ -616,7 +654,7 @@ namespace ScrollViewEx
         }
 
         /// <summary>
-        /// ×Ô¶¯¹ö¶¯Ğ­³Ì
+        /// è‡ªåŠ¨æ»šåŠ¨åç¨‹
         /// </summary>
         /// <param name="speed"></param>
         /// <param name="time"></param>
@@ -661,7 +699,7 @@ namespace ScrollViewEx
         }
 
         /// <summary>
-        /// ¹Ø±Õ×Ô¶¯¹ö¶¯¶¯»­
+        /// å…³é—­è‡ªåŠ¨æ»šåŠ¨åŠ¨ç”»
         /// </summary>
         private void StopAnimation()
         {
