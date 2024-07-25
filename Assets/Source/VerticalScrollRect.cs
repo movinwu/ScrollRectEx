@@ -439,14 +439,22 @@ namespace ScrollViewEx
         /// 计算item为止
         /// </summary>
         /// <param name="itemPos"></param>
+        /// <param name="ignoreViewport"></param>
         /// <returns></returns>
-        private float CalcItemRectPos(float itemPos)
+        private float CalcItemRectPos(float itemPos, bool ignoreViewport = true)
         {
             itemPos = Mathf.Clamp(itemPos, 0, m_ItemCount);
             int itemIndex = Mathf.Clamp(Mathf.FloorToInt(itemPos), 0, m_ItemCount - 1);
             var height = m_ItemHeightCache[itemIndex];
             var itemHeight = m_GetItemHeight(itemIndex);
             height += itemHeight * (itemPos - itemIndex);
+            if (!ignoreViewport)
+            {
+                if (m_ContentHeight > m_ViewportRect.height && height > m_ContentHeight - m_ViewportRect.height)
+                {
+                    height = m_ContentHeight - m_ViewportRect.height;
+                }
+            }
             if (m_ScrollDirection == EScrollDirection.Up2Down)
             {
                 return -height;
@@ -543,8 +551,8 @@ namespace ScrollViewEx
             StopAnimation();
 
             //标准化位置
-            var curContentPos = Mathf.Abs(CalcContentRectPos(m_CurItemPos / m_ItemCount));
-            var targetContentPos = Mathf.Abs(CalcContentRectPos(targetPos / m_ItemCount));
+            var curContentPos = Mathf.Abs(CalcItemRectPos(m_CurItemPos, false));
+            var targetContentPos = Mathf.Abs(CalcItemRectPos(targetPos, false));
 
             //计算滚动
             if (Mathf.Abs(curContentPos - targetContentPos) > 0.1f)
@@ -601,8 +609,8 @@ namespace ScrollViewEx
             StopAnimation();
 
             //标准化位置
-            var curContentPos = Mathf.Abs(CalcContentRectPos(m_CurItemPos / m_ItemCount));
-            var targetContentPos = Mathf.Abs(CalcContentRectPos(targetPos / m_ItemCount));
+            var curContentPos = Mathf.Abs(CalcItemRectPos(m_CurItemPos, false));
+            var targetContentPos = Mathf.Abs(CalcItemRectPos(targetPos, false));
 
             //计算滚动
             if (Mathf.Abs(curContentPos - targetContentPos) > 0.1f)
