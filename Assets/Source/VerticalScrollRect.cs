@@ -111,13 +111,15 @@ namespace ScrollViewEx
             Func<int, float> getItemHeight = null,
             float initItemPos = 0)
         {
+            m_ScrollRect = GetComponent<ScrollRect>();
+            m_ScrollRect.onValueChanged.RemoveAllListeners();
+
             if (itemCount == 0)
             {
                 Debug.LogError("元素数量不能为0");
                 return;
             }
 
-            m_ScrollRect = GetComponent<ScrollRect>();
             //设置滑动方向
             m_ScrollRect.vertical = true;
             m_ScrollRect.horizontal = false;
@@ -137,6 +139,8 @@ namespace ScrollViewEx
                 Debug.LogError("没有指定边距");
                 return;
             }
+
+            StopAnimation();
 
             //第一次开启滚动条
             if (m_PoolingItem.Count == 0)
@@ -194,10 +198,6 @@ namespace ScrollViewEx
             m_CurItemIndex = Mathf.Clamp((int)initItemPos, 0, itemCount - 1);
             m_CurItemPos = Mathf.Clamp(initItemPos, 0, itemCount);
 
-            m_ScrollRect.onValueChanged.RemoveAllListeners();
-            m_ScrollRect.onValueChanged.AddListener(OnScrollRectValueChange);
-
-
             //更新content
             m_ThisControlContent = true;
             UpdateHeightCache();
@@ -207,6 +207,17 @@ namespace ScrollViewEx
             UpdateChildItem(initPercent);
             UpdateItemPosition(initPercent);
             m_ThisControlContent = false;
+
+            m_ScrollRect.onValueChanged.AddListener(OnScrollRectValueChange);
+        }
+
+        /// <summary>
+        /// 重置元素数量
+        /// </summary>
+        /// <param name="newItemCount"></param>
+        public void ResetItemCount(int newItemCount)
+        {
+            StartScrollView(newItemCount, m_RefreshItemAction, m_RecycleItemAction, m_GetChildItemPrefabIndex, m_GetChildItemPaddingIndex, m_GetItemHeight, m_CurItemPos);
         }
 
         /// <summary>
@@ -235,7 +246,7 @@ namespace ScrollViewEx
         private void OnScrollRectValueChange(Vector2 position)
         {
             //更新当前位置
-            m_CurItemPos = position.y * m_ItemCount;
+            m_CurItemPos = CalcItemPos();
 
             //当前元素控制scrollview时,监听不生效
             if (m_ThisControlContent)
@@ -436,7 +447,7 @@ namespace ScrollViewEx
         }
 
         /// <summary>
-        /// 计算item为止
+        /// 计算item位置
         /// </summary>
         /// <param name="itemPos"></param>
         /// <param name="ignoreViewport"></param>
@@ -460,6 +471,36 @@ namespace ScrollViewEx
                 return -height;
             }
             return height;
+        }
+
+        /// <summary>
+        /// 计算item位置
+        /// </summary>
+        /// <returns></returns>
+        private float CalcItemPos()
+        {
+            var index = -1;
+            var height = m_ScrollRect.content.anchoredPosition.y;
+            if (m_ScrollDirection == EScrollDirection.Down2Up)
+            {
+                height = -height;
+            }
+            for (int i = m_ItemHeightCache.Count - 1; i >= 0; i--)
+            {
+                if (m_ItemHeightCache[i] <= height)
+                {
+                    index = i;
+                    break;
+                }
+            }
+            index = Mathf.Max(0, index);
+            var top = m_ContentHeight;
+            if (index < m_ItemHeightCache.Count - 1)
+            {
+                top = m_ItemHeightCache[index + 1];
+            }
+            var bottom = m_ItemHeightCache[index];
+            return index + (height - bottom) / (top - bottom);
         }
 
         /// <summary>
@@ -577,12 +618,7 @@ namespace ScrollViewEx
                 StartAnimation(speed, time, direction, onScrollEnd);
                 if (blockRaycasts)
                 {
-                    var canvasGroup = this.GetComponent<CanvasGroup>();
-                    if (null == canvasGroup)
-                    {
-                        canvasGroup = this.gameObject.AddComponent<CanvasGroup>();
-                    }
-                    canvasGroup.blocksRaycasts = false;
+                    BlockRaycasts();
                 }
             }
             else
@@ -635,17 +671,37 @@ namespace ScrollViewEx
                 StartAnimation(speed, time, direction, onScrollEnd);
                 if (blockRaycasts)
                 {
-                    var canvasGroup = this.GetComponent<CanvasGroup>();
-                    if (null == canvasGroup)
-                    {
-                        canvasGroup = this.gameObject.AddComponent<CanvasGroup>();
-                    }
-                    canvasGroup.blocksRaycasts = false;
+                    BlockRaycasts();
                 }
             }
             else
             {
                 onScrollEnd?.Invoke();
+            }
+        }
+
+        /// <summary>
+        /// 关闭点击检测
+        /// </summary>
+        private void BlockRaycasts()
+        {
+            var canvasGroup = this.GetComponent<CanvasGroup>();
+            if (null == canvasGroup)
+            {
+                canvasGroup = this.gameObject.AddComponent<CanvasGroup>();
+            }
+            canvasGroup.blocksRaycasts = false;
+        }
+
+        /// <summary>
+        /// 开启点击检测
+        /// </summary>
+        private void UnblockRaycasts()
+        {
+            var canvasGroup = this.GetComponent<CanvasGroup>();
+            if (null != canvasGroup)
+            {
+                canvasGroup.blocksRaycasts = true;
             }
         }
 
@@ -697,11 +753,7 @@ namespace ScrollViewEx
             }
 
             m_AutoScrollAnimation = null;
-            var canvasGroup = this.GetComponent<CanvasGroup>();
-            if (null != canvasGroup)
-            {
-                canvasGroup.blocksRaycasts = true;
-            }
+            UnblockRaycasts();
 
             onScrollEnd?.Invoke();
         }
@@ -716,11 +768,7 @@ namespace ScrollViewEx
                 StopCoroutine(m_AutoScrollAnimation);
                 m_AutoScrollAnimation = null;
             }
-            var canvasGroup = this.GetComponent<CanvasGroup>();
-            if (null != canvasGroup)
-            {
-                canvasGroup.blocksRaycasts = true;
-            }
+            UnblockRaycasts();
         }
 
         private void OnEnable()
