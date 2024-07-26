@@ -22,6 +22,15 @@ namespace ScrollViewEx
         [Header("滚动方向")]
         [SerializeField] private EScrollDirection m_ScrollDirection;
 
+        [Header("是否开启自动定位")]
+        [SerializeField] private bool m_EnableSnap;
+
+        [Header("自动定位item对齐位置,开启自动定位后生效")]
+        [SerializeField, Range(0, 1)] private float m_ItemSnapPivot;
+
+        [Header("自动定位viewport对齐位置,开启自动定位后生效")]
+        [SerializeField, Range(0, 1)] private float m_ViewportSnapPivot;
+
         /// <summary>
         /// 元素数量
         /// </summary>
@@ -61,6 +70,16 @@ namespace ScrollViewEx
         /// 获取item高度
         /// </summary>
         private Func<int, float> m_GetItemHeight;
+
+        /// <summary>
+        /// 当滚动条滚动时在每个元素上执行的回调
+        /// </summary>
+        private Action<ScrollRectViewItem, float> m_OnScrollRectValueChangeItemAction;
+
+        /// <summary>
+        /// 当滚动条滚动时执行的回调
+        /// </summary>
+        private Action<float> m_OnScrollRectValueChangeAction;
 
         private ScrollRect m_ScrollRect;
 
@@ -102,6 +121,8 @@ namespace ScrollViewEx
         /// <param name="getChildItemPaddingIndex"></param>
         /// <param name="getItemHeight">获取item高度</param>
         /// <param name="initItemPos">初始化显示下标</param>
+        /// <param name="onScrollRectValueChangeItemAction">当滚动条滚动时每个item上执行函数</param>
+        /// <param name="onScrollRectValueChangeAction">当滚动条滚动时执行函数</param>
         public void StartScrollView(
             int itemCount,
             Action<ScrollRectViewItem> refreshItemAction,
@@ -109,6 +130,8 @@ namespace ScrollViewEx
             Func<int, int> getchildItemPrefabIndex = null,
             Func<int, int> getChildItemPaddingIndex = null,
             Func<int, float> getItemHeight = null,
+            Action<ScrollRectViewItem, float> onScrollRectValueChangeItemAction = null,
+            Action<float> onScrollRectValueChangeAction = null,
             float initItemPos = 0)
         {
             m_ScrollRect = GetComponent<ScrollRect>();
@@ -181,6 +204,8 @@ namespace ScrollViewEx
             m_GetChildItemPrefabIndex = getchildItemPrefabIndex;
             m_GetChildItemPaddingIndex = getChildItemPaddingIndex;
             m_GetItemHeight = getItemHeight;
+            m_OnScrollRectValueChangeItemAction = onScrollRectValueChangeItemAction;
+            m_OnScrollRectValueChangeAction = onScrollRectValueChangeAction;
             if (null == m_GetChildItemPrefabIndex)
             {
                 m_GetChildItemPrefabIndex = DefaultGetIndex;
@@ -217,7 +242,7 @@ namespace ScrollViewEx
         /// <param name="newItemCount"></param>
         public void ResetItemCount(int newItemCount)
         {
-            StartScrollView(newItemCount, m_RefreshItemAction, m_RecycleItemAction, m_GetChildItemPrefabIndex, m_GetChildItemPaddingIndex, m_GetItemHeight, m_CurItemPos);
+            StartScrollView(newItemCount, m_RefreshItemAction, m_RecycleItemAction, m_GetChildItemPrefabIndex, m_GetChildItemPaddingIndex, m_GetItemHeight, m_OnScrollRectValueChangeItemAction, m_OnScrollRectValueChangeAction, m_CurItemPos);
         }
 
         /// <summary>
@@ -247,6 +272,18 @@ namespace ScrollViewEx
         {
             //更新当前位置
             m_CurItemPos = CalcItemPos();
+
+            //执行回调
+            m_OnScrollRectValueChangeAction?.Invoke(m_CurItemPos);
+            if (m_UsingItem.Count > 0 && null != m_OnScrollRectValueChangeItemAction)
+            {
+                var cur = m_UsingItem.First;
+                while (null != cur)
+                {
+                    m_OnScrollRectValueChangeItemAction(cur.Value, m_CurItemPos);
+                    cur = cur.Next;
+                }
+            }
 
             //当前元素控制scrollview时,监听不生效
             if (m_ThisControlContent)
@@ -571,7 +608,7 @@ namespace ScrollViewEx
             //立即中断当前自动滚动的动画
             StopAnimation();
 
-            StartScrollView(m_ItemCount, m_RefreshItemAction, m_RecycleItemAction, m_GetChildItemPrefabIndex, m_GetChildItemPaddingIndex, m_GetItemHeight, position);
+            StartScrollView(m_ItemCount, m_RefreshItemAction, m_RecycleItemAction, m_GetChildItemPrefabIndex, m_GetChildItemPaddingIndex, m_GetItemHeight, m_OnScrollRectValueChangeItemAction, m_OnScrollRectValueChangeAction, position);
         }
 
         /// <summary>
