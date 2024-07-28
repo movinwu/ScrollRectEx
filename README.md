@@ -1,4 +1,4 @@
-之前一直使用的是SuperScrollView组件,直到遇到了一个需求:单个item的长度超过了一个屏幕高度(大约6000像素-8000像素)的一个竖直滚动条,同时需要支持代码滚动到指定位置和快速定位到指定位置,但是SuperScrollView提供的相应函数都需要开启snap,在实验了诸如[EnhancedScrollView](https://github.com/tinyantstudio/EnhancedScrollView)\\[FancyScrollView](https://github.com/setchi/FancyScrollView)等组件后,发现都不支持长item功能,因此决定自行实现一个滚动条以满足需求.
+之前一直使用的是SuperScrollView组件,直到遇到了一个需求:单个item的长度超过了一个屏幕高度(大约6000像素-8000像素)的一个竖直滚动条,同时需要支持代码滚动到指定位置和快速定位到指定位置,但是SuperScrollView提供的相应函数都需要开启snap,在实验了诸如[EnhancedScrollView](https://github.com/tinyantstudio/EnhancedScrollView)\\[FancyScrollView](https://github.com/setchi/FancyScrollView)等组件后,发现都不支持长item在不开启snap的情况下代码滚动到指定位置及快速定位等功能,因此决定自行实现一个滚动条以满足需求.
 也许已经有其他组件已经实现了此功能,也许是我使用过的某个滚动条组件是支持这个需求的,如果有这些情况,还希望留言告知...
 *这是一个在Unity的UGUI中使用的滚动条组件*
 # 功能概述
