@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 namespace ScrollViewEx
@@ -10,12 +11,15 @@ namespace ScrollViewEx
     /// 竖直滚动条
     /// </summary>
     [RequireComponent(typeof(ScrollRect))]
-    public class VerticalScrollRect : MonoBehaviour
+    public class VerticalScrollRect : MonoBehaviour, IEndDragHandler
     {
         [Header("所有item预制体")]
         [SerializeField] private ScrollRectViewItem[] m_ChildPrefab;
-        [Header("所有item间隔")]
+        [Header("所有item之间间隔")]
         [SerializeField] private float[] m_AllSpacing = new float[] { 0f, };
+        [Header("上下边距")]
+        [SerializeField] private float m_UpPadding;
+        [SerializeField] private float m_DownPadding;
         [Header("回收距离")]
         [SerializeField] private float m_PreAllocLength = 200;
 
@@ -23,12 +27,12 @@ namespace ScrollViewEx
         [SerializeField] private EScrollDirection m_ScrollDirection;
 
         [Header("是否开启自动定位")]
-        [SerializeField] private bool m_EnableSnap;
+        [SerializeField] private bool m_EnableAutoSnap;
 
         [Header("自动定位item对齐位置,开启自动定位后生效")]
         [SerializeField, Range(0, 1)] private float m_ItemSnapPivot;
 
-        [Header("自动定位viewport对齐位置,开启自动定位后生效")]
+        [Header("定位viewport对齐位置")]
         [SerializeField, Range(0, 1)] private float m_ViewportSnapPivot;
 
         /// <summary>
@@ -84,9 +88,9 @@ namespace ScrollViewEx
         private ScrollRect m_ScrollRect;
 
         /// <summary>
-        /// 当前元素在控制content变化
+        /// 更新时需要刷新item
         /// </summary>
-        private bool m_ThisControlContent;
+        private bool m_NeedRefreshItemOnUpdate;
 
         private LinkedList<ScrollRectViewItem> m_UsingItem = new LinkedList<ScrollRectViewItem>();
         private List<Queue<ScrollRectViewItem>> m_PoolingItem = new List<Queue<ScrollRectViewItem>>();
@@ -110,6 +114,11 @@ namespace ScrollViewEx
         /// 自动滚动动画协程
         /// </summary>
         private Coroutine m_AutoScrollAnimation;
+
+        /// <summary>
+        /// snap状态
+        /// </summary>
+        private ESnapStatus m_SnapStatus;
 
         /// <summary>
         /// 开始滚动条
@@ -223,15 +232,16 @@ namespace ScrollViewEx
             m_CurItemIndex = Mathf.Clamp((int)initItemPos, 0, itemCount - 1);
             m_CurItemPos = Mathf.Clamp(initItemPos, 0, itemCount);
 
+            m_SnapStatus = ESnapStatus.NotNeedSnap;
+
             //更新content
-            m_ThisControlContent = true;
+            m_NeedRefreshItemOnUpdate = false;
             UpdateHeightCache();
-            float initPercent = Mathf.Abs(CalcItemRectPos(m_CurItemPos)) / m_ContentHeight;
             UpdateViewportRect();
-            UpdateContent(initPercent);
-            UpdateChildItem(initPercent);
-            UpdateItemPosition(initPercent);
-            m_ThisControlContent = false;
+            UpdateContent();
+            UpdateChildItem();
+            UpdateItemPosition();
+            m_NeedRefreshItemOnUpdate = true;
 
             m_ScrollRect.onValueChanged.AddListener(OnScrollRectValueChange);
         }
@@ -271,7 +281,7 @@ namespace ScrollViewEx
         private void OnScrollRectValueChange(Vector2 position)
         {
             //更新当前位置
-            m_CurItemPos = CalcItemPos();
+            m_CurItemPos = ContentPercentPos2DataPos();
 
             //执行回调
             m_OnScrollRectValueChangeAction?.Invoke(m_CurItemPos);
@@ -285,16 +295,16 @@ namespace ScrollViewEx
                 }
             }
 
-            //当前元素控制scrollview时,监听不生效
-            if (m_ThisControlContent)
+            if (m_SnapStatus == ESnapStatus.NotNeedSnap)
             {
-                return;
+                m_SnapStatus = ESnapStatus.PrepareToSnap;
             }
 
-            m_ThisControlContent = true;
-            UpdateChildItem(position.y);
-            UpdateItemPosition(position.y);
-            m_ThisControlContent = false;
+            if (m_NeedRefreshItemOnUpdate)
+            {
+                UpdateChildItem();
+                UpdateItemPosition();
+            }
         }
 
         /// <summary>
@@ -316,8 +326,7 @@ namespace ScrollViewEx
         /// <summary>
         /// 更新content大小和位置
         /// </summary>
-        /// <param name="curPos">当前位置,0-1</param>
-        private void UpdateContent(float curPos)
+        private void UpdateContent()
         {
             //更新content尺寸
             var content = m_ScrollRect.content;
@@ -327,7 +336,8 @@ namespace ScrollViewEx
                 content.anchorMax = new Vector2(0.5f, 0f);
                 content.pivot = new Vector2(0.5f, 0f);
                 content.sizeDelta = new Vector2(m_ViewportRect.width, m_ContentHeight);
-                content.anchoredPosition = new Vector2(0, CalcContentRectPos(curPos));
+                var anchorPos = -DataPos2ContentPos(m_CurItemPos, ignoreViewportPivot: false, ignoreViewportLimit: false);
+                content.anchoredPosition = new Vector2(0, anchorPos);
             }
             else
             {
@@ -335,15 +345,15 @@ namespace ScrollViewEx
                 content.anchorMax = new Vector2(0.5f, 1f);
                 content.pivot = new Vector2(0.5f, 1f);
                 content.sizeDelta = new Vector2(m_ViewportRect.width, m_ContentHeight);
-                content.anchoredPosition = new Vector2(0, CalcContentRectPos(curPos));
+                var anchorPos = DataPos2ContentPos(m_CurItemPos, ignoreViewportPivot: false, ignoreViewportLimit: false);
+                content.anchoredPosition = new Vector2(0, anchorPos);
             }
         }
 
         /// <summary>
         /// 更新所有item位置
         /// </summary>
-        /// <param name="curPos">当前位置,0-1</param>
-        private void UpdateItemPosition(float curPos)
+        private void UpdateItemPosition()
         {
             if (m_UsingItem.Count > 0)
             {
@@ -352,7 +362,11 @@ namespace ScrollViewEx
                 {
                     var item = itemNode.Value;
                     var anchoredPos = item.RectTransform.anchoredPosition;
-                    anchoredPos.y = CalcItemRectPos(item.CurIndex);
+                    anchoredPos.y = DataPos2ContentPos(item.CurIndex);
+                    if (m_ScrollDirection == EScrollDirection.Up2Down)
+                    {
+                        anchoredPos.y = -anchoredPos.y;
+                    }
                     item.RectTransform.anchoredPosition = anchoredPos;
 
                     itemNode = itemNode.Next;
@@ -363,8 +377,7 @@ namespace ScrollViewEx
         /// <summary>
         /// 更新显示的item集合
         /// </summary>
-        /// <param name="curPos">当前位置,0-1</param>
-        private void UpdateChildItem(float curPos)
+        private void UpdateChildItem()
         {
             //当前content的位置
             var content = m_ScrollRect.content;
@@ -381,6 +394,8 @@ namespace ScrollViewEx
             {
                 curHeight = -curHeight;
             }
+
+            curHeight -= m_ViewportRect.height * m_ViewportSnapPivot;
 
             //向前新增
             var heightDownLimit = curHeight - m_PreAllocLength;
@@ -451,6 +466,14 @@ namespace ScrollViewEx
             //更新高度缓存
             m_ItemHeightCache.Clear();
             m_ContentHeight = 0;
+            if (m_ScrollDirection == EScrollDirection.Down2Up)
+            {
+                m_ContentHeight += m_DownPadding;
+            }
+            else
+            {
+                m_ContentHeight += m_UpPadding;
+            }
             for (int i = 0; i < m_ItemCount; i++)
             {
                 m_ItemHeightCache.Add(m_ContentHeight);
@@ -462,59 +485,51 @@ namespace ScrollViewEx
                     m_ContentHeight += m_AllSpacing[paddingIndex];
                 }
             }
-        }
-
-        /// <summary>
-        /// 计算content位置
-        /// </summary>
-        /// <param name="percentPos">百分比尺寸</param>
-        /// <returns></returns>
-        private float CalcContentRectPos(float percentPos)
-        {
-            var height = m_ContentHeight * percentPos;
-            if (m_ContentHeight > m_ViewportRect.height && height > m_ContentHeight - m_ViewportRect.height)
-            {
-                height = m_ContentHeight - m_ViewportRect.height;
-            }
             if (m_ScrollDirection == EScrollDirection.Down2Up)
             {
-                return -height;
+                m_ContentHeight += m_UpPadding;
             }
-            return height;
+            else
+            {
+                m_ContentHeight += m_DownPadding;
+            }
         }
 
         /// <summary>
-        /// 计算item位置
+        /// 数据坐标转化为content坐标
         /// </summary>
         /// <param name="itemPos"></param>
-        /// <param name="ignoreViewport"></param>
+        /// <param name="ignoreViewportLimit">忽略viewport位置限制</param>
+        /// <param name="ignoreViewportPivot">忽略viewport锚点</param>
         /// <returns></returns>
-        private float CalcItemRectPos(float itemPos, bool ignoreViewport = true)
+        private float DataPos2ContentPos(float itemPos, bool ignoreViewportLimit = true, bool ignoreViewportPivot = true)
         {
             itemPos = Mathf.Clamp(itemPos, 0, m_ItemCount);
             int itemIndex = Mathf.Clamp(Mathf.FloorToInt(itemPos), 0, m_ItemCount - 1);
             var height = m_ItemHeightCache[itemIndex];
             var itemHeight = m_GetItemHeight(itemIndex);
             height += itemHeight * (itemPos - itemIndex);
-            if (!ignoreViewport)
+            if (!ignoreViewportPivot)
+            {
+                height -= m_ViewportSnapPivot * m_ViewportRect.height;
+            }
+            if (!ignoreViewportLimit)
             {
                 if (m_ContentHeight > m_ViewportRect.height && height > m_ContentHeight - m_ViewportRect.height)
                 {
                     height = m_ContentHeight - m_ViewportRect.height;
                 }
-            }
-            if (m_ScrollDirection == EScrollDirection.Up2Down)
-            {
-                return -height;
+                height = Mathf.Max(0, height);
             }
             return height;
         }
 
         /// <summary>
-        /// 计算item位置
+        /// content位置转化为数据坐标位置
         /// </summary>
+        /// <param name="offset">偏移量</param>
         /// <returns></returns>
-        private float CalcItemPos()
+        private float ContentPercentPos2DataPos(float offset = 0)
         {
             var index = -1;
             var height = m_ScrollRect.content.anchoredPosition.y;
@@ -522,6 +537,7 @@ namespace ScrollViewEx
             {
                 height = -height;
             }
+            height += offset;
             for (int i = m_ItemHeightCache.Count - 1; i >= 0; i--)
             {
                 if (m_ItemHeightCache[i] <= height)
@@ -597,7 +613,8 @@ namespace ScrollViewEx
         /// 瞬间跳跃到指定位置
         /// </summary>
         /// <param name="position">从 0-元素个数 取值</param>
-        public void JumpTo(float position)
+        /// <param name="autoSnap">跳跃完成后是否自动定位</param>
+        public void JumpTo(float position, bool autoSnap = false)
         {
             position = position % m_ItemCount;
             if (position < 0)
@@ -605,10 +622,25 @@ namespace ScrollViewEx
                 position += m_ItemCount;
             }
 
+            if (m_ContentHeight <= m_ViewportRect.height)
+            {
+                return;
+            }
+
             //立即中断当前自动滚动的动画
             StopAnimation();
+            m_ScrollRect.StopMovement();
+
+            if (autoSnap)
+            {
+                m_SnapStatus = ESnapStatus.PrepareToSnap;
+            }
 
             StartScrollView(m_ItemCount, m_RefreshItemAction, m_RecycleItemAction, m_GetChildItemPrefabIndex, m_GetChildItemPaddingIndex, m_GetItemHeight, m_OnScrollRectValueChangeItemAction, m_OnScrollRectValueChangeAction, position);
+            if (autoSnap)
+            {
+                StartAutoSnap();
+            }
         }
 
         /// <summary>
@@ -618,7 +650,8 @@ namespace ScrollViewEx
         /// <param name="speed"></param>
         /// <param name="blockRaycasts">是否屏蔽点击</param>
         /// <param name="onScrollEnd">当滚动完毕回调</param>
-        public void ScrollToBySpeed(float targetPos, float speed, bool blockRaycasts = true, Action onScrollEnd = null)
+        /// <param name="autoSnap">滚动完毕后是否自动定位</param>
+        public void ScrollToBySpeed(float targetPos, float speed, bool blockRaycasts = true, Action onScrollEnd = null, bool autoSnap = false)
         {
             if (speed <= 0)
             {
@@ -626,11 +659,23 @@ namespace ScrollViewEx
                 return;
             }
 
+            if (m_ContentHeight <= m_ViewportRect.height)
+            {
+                onScrollEnd?.Invoke();
+                return;
+            }
+
             StopAnimation();
+            m_ScrollRect.StopMovement();
+
+            if (autoSnap)
+            {
+                m_SnapStatus = ESnapStatus.PrepareToSnap;
+            }
 
             //标准化位置
-            var curContentPos = Mathf.Abs(CalcItemRectPos(m_CurItemPos, false));
-            var targetContentPos = Mathf.Abs(CalcItemRectPos(targetPos, false));
+            var curContentPos = Mathf.Abs(DataPos2ContentPos(m_CurItemPos, false));
+            var targetContentPos = Mathf.Abs(DataPos2ContentPos(targetPos, false, false));
 
             //计算滚动
             if (Mathf.Abs(curContentPos - targetContentPos) > 0.1f)
@@ -669,9 +714,10 @@ namespace ScrollViewEx
         /// </summary>
         /// <param name="targetPos"></param>
         /// <param name="time"></param>
-        /// <param name="blockRaycasts">是否屏蔽点击</param>
+        /// <param name="blockRaycasts">是否屏蔽射线检测</param>
         /// <param name="onScrollEnd">当滚动完毕回调</param>
-        public void ScrollToByTime(float targetPos, float time, bool blockRaycasts = true, Action onScrollEnd = null)
+        /// <param name="autoSnap">滚动完毕后是否自动定位</param>
+        public void ScrollToByTime(float targetPos, float time, bool blockRaycasts = false, Action onScrollEnd = null, bool autoSnap = false)
         {
             if (time <= 0)
             {
@@ -680,10 +726,16 @@ namespace ScrollViewEx
             }
 
             StopAnimation();
+            m_ScrollRect.StopMovement();
+
+            if (autoSnap)
+            {
+                m_SnapStatus = ESnapStatus.PrepareToSnap;
+            }
 
             //标准化位置
-            var curContentPos = Mathf.Abs(CalcItemRectPos(m_CurItemPos, false));
-            var targetContentPos = Mathf.Abs(CalcItemRectPos(targetPos, false));
+            var curContentPos = Mathf.Abs(DataPos2ContentPos(m_CurItemPos, false));
+            var targetContentPos = Mathf.Abs(DataPos2ContentPos(targetPos, false, false));
 
             //计算滚动
             if (Mathf.Abs(curContentPos - targetContentPos) > 0.1f)
@@ -706,7 +758,7 @@ namespace ScrollViewEx
 
                 var speed = distance / time;
                 StartAnimation(speed, time, direction, onScrollEnd);
-                if (blockRaycasts)
+                if (!blockRaycasts)
                 {
                     BlockRaycasts();
                 }
@@ -764,6 +816,7 @@ namespace ScrollViewEx
         /// <returns></returns>
         private IEnumerator AutoMoveCoroutine(float speed, float time, EScrollDirection scrollDirection, Action onScrollEnd)
         {
+            m_NeedRefreshItemOnUpdate = true;
             float timer = 0;
             while(timer < time)
             {
@@ -793,6 +846,8 @@ namespace ScrollViewEx
             UnblockRaycasts();
 
             onScrollEnd?.Invoke();
+
+            StartAutoSnap();
         }
 
         /// <summary>
@@ -808,6 +863,40 @@ namespace ScrollViewEx
             UnblockRaycasts();
         }
 
+        /// <summary>
+        /// 开始自动定位
+        /// </summary>
+        private void StartAutoSnap()
+        {
+            if (!m_EnableAutoSnap || m_SnapStatus != ESnapStatus.PrepareToSnap)
+            {
+                return;
+            }
+
+            //计算是否回弹,如果回弹,不走自动定位
+            if (m_ScrollRect.movementType == ScrollRect.MovementType.Elastic)
+            {
+                if (ContentPercentPos2DataPos() < 0 || ContentPercentPos2DataPos(m_ViewportRect.height) > m_ItemCount)
+                {
+                    m_SnapStatus = ESnapStatus.NotNeedSnap;
+                    return;
+                }
+            }
+
+            StopAnimation();
+            m_ScrollRect.StopMovement(); 
+
+            m_SnapStatus = ESnapStatus.Snapping;
+            var itemPos = Mathf.Round(ContentPercentPos2DataPos(m_ViewportRect.height * m_ViewportSnapPivot) - m_ItemSnapPivot) + m_ItemSnapPivot;
+            ScrollToByTime(
+                targetPos: itemPos,
+                time: 0.3f,
+                blockRaycasts: false,
+                onScrollEnd: () => m_SnapStatus = ESnapStatus.NotNeedSnap,
+                autoSnap: false
+                );
+        }
+
         private void OnEnable()
         {
             StopAllCoroutines();
@@ -816,6 +905,14 @@ namespace ScrollViewEx
         private void OnDisable()
         {
             StopAllCoroutines();
+        }
+
+        public void OnEndDrag(PointerEventData eventData)
+        {
+            if (m_SnapStatus == ESnapStatus.PrepareToSnap)
+            {
+                StartAutoSnap();
+            }
         }
 
         private enum EScrollDirection : byte

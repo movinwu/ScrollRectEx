@@ -28,7 +28,12 @@ public class TestPanel : MonoBehaviour {
 
         RetrieveData();
 
-        theList.StartScrollView(data.Count, item => PopulateItem(item), null, null, initItemPos: 18f);
+        theList.StartScrollView(
+            itemCount: 3,
+            refreshItemAction: item => PopulateItem(item),
+            recycleItemAction: null,
+            getchildItemPrefabIndex: index => index % 3,
+            initItemPos: 0f);
 
         //m_Btn.onClick.RemoveAllListeners();
         //m_Btn.onClick.AddListener(() =>
@@ -46,12 +51,13 @@ public class TestPanel : MonoBehaviour {
     {
         yield return new WaitForSeconds(1f);
 
-        theList.ScrollToByTime(0f, 1f, true, () =>
+        theList.JumpTo(0.3f);
+
+        yield return new WaitForSeconds(2f);
+
+        theList.ScrollToBySpeed(1.6f, 100f, false, () =>
         {
-            theList.ScrollToBySpeed(7.2f, 100f, false, () =>
-            {
-                Debug.Log("滚动完毕");
-            });
+            Debug.Log("滚动完毕");
         });
     }
 
@@ -80,5 +86,4 @@ public class TestPanel : MonoBehaviour {
         var child = item as TestChildItem;
         child.ChildData = data[item.CurIndex];
     }
-    
 }
