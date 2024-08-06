@@ -34,7 +34,12 @@ namespace ScrollViewEx
         [SerializeField, Range(0, 1)] private float m_ItemSnapPivot;
 
         [Header("定位viewport对齐位置")]
-        [SerializeField, Range(0, 1)] private float m_ViewportSnapPivot;
+        [SerializeField, Range(0, 1)] private float m_ViewportPivot;
+
+        /// <summary>
+        /// 是否是循环列表
+        /// </summary>
+        private bool m_IsLoop;
 
         /// <summary>
         /// 元素数量
@@ -42,14 +47,35 @@ namespace ScrollViewEx
         private int m_ItemCount;
 
         /// <summary>
-        /// 当前第一个元素下标
-        /// </summary>
-        private int m_CurItemIndex;
-
-        /// <summary>
         /// 当前元素位置
         /// </summary>
         private float m_CurItemPos;
+
+        /// <summary>
+        /// 当前viewport锚点位置的item数据位置
+        /// </summary>
+        public float CurItemPos 
+        { 
+            get 
+            {
+                var pos = m_CurItemPos % m_ItemCount;
+                if (pos < 0)
+                {
+                    pos += m_ItemCount;
+                }
+                return pos;
+            }
+        }
+
+        /// <summary>
+        /// 当前显示的item开始下标
+        /// </summary>
+        private int m_CurShownStartIndex;
+
+        /// <summary>
+        /// 当前显示的item结束下标
+        /// </summary>
+        private int m_CurShownEndIndex;
 
         /// <summary>
         /// 刷新元素.
@@ -69,7 +95,7 @@ namespace ScrollViewEx
         /// <summary>
         /// 获取边距下标
         /// </summary>
-        private Func<int, int> m_GetChildItemPaddingIndex;
+        private Func<int, int, int> m_GetChildItemSpaceIndex;
 
         /// <summary>
         /// 获取item高度
@@ -128,24 +154,28 @@ namespace ScrollViewEx
         /// <param name="refreshItemAction"></param>
         /// <param name="recycleItemAction"></param>
         /// <param name="getchildItemPrefabIndex"></param>
-        /// <param name="getChildItemPaddingIndex"></param>
+        /// <param name="getChildItemSpacingIndex"></param>
         /// <param name="getItemHeight">获取item高度</param>
         /// <param name="initItemPos">初始化显示下标</param>
         /// <param name="onScrollRectValueChangeItemAction">当滚动条滚动时每个item上执行函数</param>
         /// <param name="onScrollRectValueChangeAction">当滚动条滚动时执行函数</param>
+        /// <param name="isLoop">是否是循环列表</param>
         public void StartScrollView(
             int itemCount,
             Action<VerticalScrollRectViewItem> refreshItemAction,
             Action<VerticalScrollRectViewItem> recycleItemAction,
             Func<int, int> getchildItemPrefabIndex = null,
-            Func<int, int> getChildItemPaddingIndex = null,
+            Func<int, int, int> getChildItemSpacingIndex = null,
             Func<int, float> getItemHeight = null,
             Action<VerticalScrollRectViewItem, float> onScrollRectValueChangeItemAction = null,
             Action<float> onScrollRectValueChangeAction = null,
-            float initItemPos = 0)
+            float initItemPos = 0,
+            bool isLoop = false)
         {
             m_ScrollRect = GetComponent<ScrollRect>();
             m_ScrollRect.onValueChanged.RemoveAllListeners();
+
+            m_IsLoop = isLoop;
 
             if (itemCount == 0)
             {
@@ -156,12 +186,21 @@ namespace ScrollViewEx
             //设置滑动方向
             m_ScrollRect.vertical = true;
             m_ScrollRect.horizontal = false;
+
             if (null != m_ScrollRect.horizontalScrollbar)
             {
                 m_ScrollRect.horizontalScrollbar.gameObject.SetActive(false);
             }
             m_ScrollRect.horizontalScrollbar = null;
-
+            if (m_IsLoop)
+            {
+                if (null != m_ScrollRect.verticalScrollbar)
+                {
+                    m_ScrollRect.verticalScrollbar.gameObject.SetActive(false);
+                }
+                m_ScrollRect.verticalScrollbar = null;
+            }
+            
             if (null == m_ChildPrefab || m_ChildPrefab.Length == 0)
             {
                 Debug.LogError("没有指定预制体");
@@ -212,17 +251,17 @@ namespace ScrollViewEx
             m_RefreshItemAction = refreshItemAction;
             m_RecycleItemAction = recycleItemAction;
             m_GetChildItemPrefabIndex = getchildItemPrefabIndex;
-            m_GetChildItemPaddingIndex = getChildItemPaddingIndex;
+            m_GetChildItemSpaceIndex = getChildItemSpacingIndex;
             m_GetItemHeight = getItemHeight;
             m_OnScrollRectValueChangeItemAction = onScrollRectValueChangeItemAction;
             m_OnScrollRectValueChangeAction = onScrollRectValueChangeAction;
             if (null == m_GetChildItemPrefabIndex)
             {
-                m_GetChildItemPrefabIndex = DefaultGetIndex;
+                m_GetChildItemPrefabIndex = DefaultGetItemIndex;
             }
-            if (null == m_GetChildItemPaddingIndex)
+            if (null == m_GetChildItemSpaceIndex)
             {
-                m_GetChildItemPaddingIndex = DefaultGetIndex;
+                m_GetChildItemSpaceIndex = DefaultGetSpacingIndex;
             }
             if (null == m_GetItemHeight)
             {
@@ -230,18 +269,24 @@ namespace ScrollViewEx
             }
 
             m_ItemCount = Mathf.Max(0, itemCount);
-            m_CurItemIndex = Mathf.Clamp((int)initItemPos, 0, itemCount - 1);
-            m_CurItemPos = Mathf.Clamp(initItemPos, 0, itemCount);
+            if (m_IsLoop)
+            {
+                m_CurItemPos = initItemPos;
+            }
+            else
+            {
+                m_CurItemPos = Mathf.Clamp(initItemPos, 0, itemCount);
+            }
 
             m_SnapStatus = ESnapStatus.NotNeedSnap;
 
             //更新content
             m_NeedRefreshItemOnUpdate = false;
-            UpdateHeightCache();
             UpdateViewportRect();
-            UpdateContent();
+            UpdateContentAnchor();
+            UpdateCurShowItemIndex();
+            UpdateContentSize();
             UpdateChildItem();
-            UpdateItemPosition();
             m_NeedRefreshItemOnUpdate = true;
 
             m_ScrollRect.onValueChanged.AddListener(OnScrollRectValueChange);
@@ -253,15 +298,23 @@ namespace ScrollViewEx
         /// <param name="newItemCount"></param>
         public void ResetItemCount(int newItemCount)
         {
-            StartScrollView(newItemCount, m_RefreshItemAction, m_RecycleItemAction, m_GetChildItemPrefabIndex, m_GetChildItemPaddingIndex, m_GetItemHeight, m_OnScrollRectValueChangeItemAction, m_OnScrollRectValueChangeAction, m_CurItemPos);
+            StartScrollView(newItemCount, m_RefreshItemAction, m_RecycleItemAction, m_GetChildItemPrefabIndex, m_GetChildItemSpaceIndex, m_GetItemHeight, m_OnScrollRectValueChangeItemAction, m_OnScrollRectValueChangeAction, m_CurItemPos);
         }
 
         /// <summary>
-        /// 默认获取下标函数
+        /// 默认获取元素下标函数
         /// </summary>
         /// <param name="itemIndex"></param>
         /// <returns></returns>
-        private int DefaultGetIndex(int itemIndex) => 0;
+        private int DefaultGetItemIndex(int itemIndex) => 0;
+
+        /// <summary>
+        /// 默认获取间距下标函数
+        /// </summary>
+        /// <param name="startIndex"></param>
+        /// <param name="endIndex"></param>
+        /// <returns></returns>
+        private int DefaultGetSpacingIndex(int startIndex, int endIndex) => 0;
 
         /// <summary>
         /// 默认获取item高度
@@ -282,7 +335,7 @@ namespace ScrollViewEx
         private void OnScrollRectValueChange(Vector2 position)
         {
             //更新当前位置
-            m_CurItemPos = ContentPercentPos2DataPos();
+            UpdateCurItemPos();
 
             //执行回调
             m_OnScrollRectValueChangeAction?.Invoke(m_CurItemPos);
@@ -324,9 +377,123 @@ namespace ScrollViewEx
         }
 
         /// <summary>
-        /// 更新content大小和位置
+        /// 更新现在显示的item下标范围
         /// </summary>
-        private void UpdateContent()
+        private void UpdateCurShowItemIndex()
+        {
+            if (m_IsLoop)
+            {
+                var index = Mathf.FloorToInt(m_CurItemPos);
+                m_CurShownStartIndex = index;
+                m_CurShownEndIndex = index;
+            }
+            else
+            {
+                var index = Mathf.Clamp(Mathf.FloorToInt(m_CurItemPos), 0, m_ItemCount);
+                m_CurShownStartIndex = index;
+                m_CurShownEndIndex = index;
+            }
+
+            var curHeight = m_ViewportRect.height * m_ViewportPivot;
+
+            var curItemPos = m_CurItemPos % m_ItemCount;
+            if (curItemPos < 0)
+            {
+                curItemPos += m_ItemCount;
+            }
+            var itemHeight = m_GetItemHeight(Mathf.FloorToInt(curItemPos));
+
+            var curDown = curHeight - itemHeight * (curItemPos % 1f);
+            var limit = -m_PreAllocLength;
+            while (curDown > limit)
+            {
+                //向下添加
+                if (m_IsLoop)
+                {
+                    var endIndex = RegularIndex(m_CurShownStartIndex);
+                    m_CurShownStartIndex--;
+                    var startIndex = RegularIndex(m_CurShownStartIndex);
+                    curDown -= m_AllSpacing[m_GetChildItemSpaceIndex(startIndex, endIndex)];
+                    curDown -= m_GetItemHeight(startIndex);
+                }
+                else
+                {
+                    if (m_CurShownStartIndex > 0)
+                    {
+                        m_CurShownStartIndex--;
+                        curDown -= m_AllSpacing[m_GetChildItemSpaceIndex(m_CurShownStartIndex, m_CurShownStartIndex + 1)];
+                        curDown -= m_GetItemHeight(m_CurShownStartIndex);
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+            }
+
+            var curUp = curHeight + itemHeight * (1 - curItemPos % 1f);
+            limit = m_PreAllocLength + m_ViewportRect.height;
+            while (curUp < limit)
+            {
+                //向上添加
+                if (m_IsLoop)
+                {
+                    var startIndex = RegularIndex(m_CurShownEndIndex);
+                    m_CurShownEndIndex++;
+                    var endIndex = RegularIndex(m_CurShownEndIndex);
+                    curUp += m_AllSpacing[m_GetChildItemSpaceIndex(startIndex, endIndex)];
+                    curUp += m_GetItemHeight(endIndex);
+                }
+                else
+                {
+                    if (m_CurShownEndIndex < m_ItemCount - 1)
+                    {
+                        m_CurShownEndIndex++;
+                        curUp += m_AllSpacing[m_GetChildItemSpaceIndex(m_CurShownEndIndex - 1, m_CurShownEndIndex)];
+                        curUp += m_GetItemHeight(m_CurShownEndIndex);
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// 规范化下标
+        /// </summary>
+        /// <param name="index"></param>
+        /// <returns></returns>
+        private int RegularIndex(int index)
+        {
+            index = index % m_ItemCount;
+            if (index < 0)
+            {
+                index += m_ItemCount;
+            }
+            return index;
+        }
+
+        /// <summary>
+        /// 规范化位置
+        /// </summary>
+        /// <param name="pos"></param>
+        /// <returns></returns>
+        private float RegularPos(float pos)
+        {
+            pos = pos % m_ItemCount;
+            if (pos < 0)
+            {
+                pos += m_ItemCount;
+            }
+            return pos;
+        }
+
+        /// <summary>
+        /// 更新content锚点
+        /// </summary>
+        private void UpdateContentAnchor()
         {
             //更新content尺寸
             var content = m_ScrollRect.content;
@@ -335,43 +502,97 @@ namespace ScrollViewEx
                 content.anchorMin = new Vector2(0.5f, 0f);
                 content.anchorMax = new Vector2(0.5f, 0f);
                 content.pivot = new Vector2(0.5f, 0f);
-                content.sizeDelta = new Vector2(m_ViewportRect.width, m_ContentHeight);
-                var anchorPos = -DataPos2ContentPos(m_CurItemPos, ignoreViewportPivot: false, ignoreViewportLimit: false);
-                content.anchoredPosition = new Vector2(0, anchorPos);
             }
             else
             {
                 content.anchorMin = new Vector2(0.5f, 1f);
                 content.anchorMax = new Vector2(0.5f, 1f);
                 content.pivot = new Vector2(0.5f, 1f);
-                content.sizeDelta = new Vector2(m_ViewportRect.width, m_ContentHeight);
-                var anchorPos = DataPos2ContentPos(m_CurItemPos, ignoreViewportPivot: false, ignoreViewportLimit: false);
-                content.anchoredPosition = new Vector2(0, anchorPos);
             }
         }
 
         /// <summary>
-        /// 更新所有item位置
+        /// 更新content大小
         /// </summary>
-        private void UpdateItemPosition()
+        private void UpdateContentSize()
         {
-            if (m_UsingItem.Count > 0)
-            {
-                var itemNode = m_UsingItem.First;
-                while (null != itemNode)
-                {
-                    var item = itemNode.Value;
-                    var anchoredPos = item.RectTransform.anchoredPosition;
-                    anchoredPos.y = DataPos2ContentPos(item.CurIndex);
-                    if (m_ScrollDirection == EScrollDirection.Up2Down)
-                    {
-                        anchoredPos.y = -anchoredPos.y;
-                    }
-                    item.RectTransform.anchoredPosition = anchoredPos;
+            var content = m_ScrollRect.content;
 
-                    itemNode = itemNode.Next;
+            if (m_IsLoop)
+            {
+                var height = 0f;
+                for (int i = m_CurShownStartIndex; i < m_CurShownEndIndex; i++)
+                {
+                    var regularStartIndex = RegularIndex(i);
+                    var regularEndIndex = RegularIndex(i + 1);
+                    height += m_GetItemHeight(regularStartIndex);
+                    height += m_AllSpacing[m_GetChildItemSpaceIndex(regularStartIndex, regularEndIndex)];
                 }
+                var regularIndex = RegularIndex(m_CurShownEndIndex);
+                height += m_GetItemHeight(regularIndex);
+
+                content.sizeDelta = new Vector2(m_ViewportRect.width, m_ContentHeight);
+
+                var anchoreHeight = 0f;
+                var endIndex = Mathf.FloorToInt(m_CurItemPos);
+                for (int i = m_CurShownStartIndex; i < endIndex; i++)
+                {
+                    var regularStartIndex = RegularIndex(i);
+                    var regularEndIndex = RegularIndex(i + 1);
+                    anchoreHeight += m_GetItemHeight(regularStartIndex);
+                    anchoreHeight += m_AllSpacing[m_GetChildItemSpaceIndex(regularStartIndex, regularEndIndex)];
+                }
+                regularIndex = RegularIndex(endIndex);
+                anchoreHeight += m_GetItemHeight(regularIndex) * (RegularPos(m_CurItemPos) - regularIndex);
+                anchoreHeight -= m_ViewportRect.height * m_ViewportPivot;
+                if (m_ScrollDirection == EScrollDirection.Down2Up)
+                {
+                    anchoreHeight = -anchoreHeight;
+                }
+                content.anchoredPosition = new Vector2(0, anchoreHeight);
             }
+            else
+            {
+                UpdateHeightCache();
+                content.sizeDelta = new Vector2(m_ViewportRect.width, m_ContentHeight);
+                var anchorPos = CalcHeightByItemPos(m_CurItemPos);
+                if (anchorPos + m_ViewportRect.height > m_ContentHeight)
+                {
+                    anchorPos = m_ContentHeight - m_ViewportRect.height;
+                }
+                if (m_ScrollDirection == EScrollDirection.Down2Up)
+                {
+                    anchorPos = -anchorPos;
+                }
+                content.anchoredPosition = new Vector2(0, anchorPos);
+            }
+        }
+
+        private float CalcHeightByItemPos(float itemPos)
+        {
+            var anchorPos = 0f;
+            if (m_ScrollDirection == EScrollDirection.Down2Up)
+            {
+                anchorPos += m_DownPadding;
+            }
+            else
+            {
+                anchorPos += m_UpPadding;
+            }
+            var curItemIndex = Mathf.Clamp(Mathf.FloorToInt(itemPos), 0, m_ItemCount - 1);
+            for (int i = 0; i < curItemIndex; i++)
+            {
+                anchorPos += m_GetItemHeight(i);
+                anchorPos += m_AllSpacing[m_GetChildItemSpaceIndex(i, i + 1)];
+            }
+            float percent = itemPos % 1f;
+            if (percent < 0)
+            {
+                percent += 1f;
+            }
+            anchorPos += percent * m_GetItemHeight(curItemIndex);
+            anchorPos -= m_ViewportRect.height * m_ViewportPivot;
+            return anchorPos;
         }
 
         /// <summary>
@@ -379,85 +600,39 @@ namespace ScrollViewEx
         /// </summary>
         private void UpdateChildItem()
         {
-            //当前content的位置
-            var content = m_ScrollRect.content;
-            var curHeight = content.anchoredPosition.y;
-
-            //添加第一个元素
-            if (m_UsingItem.Count == 0)
+            if (m_IsLoop)
             {
-                var item = NewSingleItem(m_CurItemIndex);
-                m_UsingItem.AddFirst(item);
+                //没有显示的item
+                if (m_UsingItem.Count == 0)
+                {
+                    for (int i = m_CurShownStartIndex; i <= m_CurShownEndIndex; i++)
+                    {
+                        var item = NewSingleItem(i);
+                    }
+                }
+                else
+                {
+
+                }
             }
-
-            if (m_ScrollDirection == EScrollDirection.Down2Up)
+            else
             {
-                curHeight = -curHeight;
-            }
 
-            curHeight -= m_ViewportRect.height * m_ViewportSnapPivot;
-
-            //向前新增
-            var heightDownLimit = curHeight - m_PreAllocLength;
-            bool operation = false;
-            while (m_UsingItem.Count > 0)
-            {
-                var first = m_UsingItem.First.Value;
-                var index = first.CurIndex;
-                var height = m_ItemHeightCache[index];
-                //新增
-                if (height > heightDownLimit && index > 0)
+                //没有显示的item
+                if (m_UsingItem.Count == 0)
                 {
-                    var item = NewSingleItem(index - 1);
-                    m_UsingItem.AddFirst(item);
-                    operation = true;
-                    continue;
+                    for (int i = m_CurShownStartIndex; i <= m_CurShownEndIndex; i++)
+                    {
+                        var item = NewSingleItem(i);
+                        var anchoredPos = item.RectTransform.anchoredPosition;
+                        var height = CalcHeightByItemPos(i);
+                        m_UsingItem.AddLast(item);
+                    }
                 }
-
-                var itemIndex = m_GetChildItemPrefabIndex(index);
-                height += m_ChildPrefab[itemIndex].RectTransform.rect.height;
-                //销毁
-                if (height < heightDownLimit && !operation)
+                else
                 {
-                    RecycleSingleItem(first);
-                    m_UsingItem.RemoveFirst();
-                    continue;
+
                 }
-
-                break;
-            }
-
-            curHeight += m_ViewportRect.height;
-
-            //向后新增
-            var heightUpLimit = curHeight + m_PreAllocLength;
-            operation = false;
-            while (m_UsingItem.Count > 0)
-            {
-                var last = m_UsingItem.Last.Value;
-                var index = last.CurIndex;
-
-                var height = m_ItemHeightCache[index];
-                //销毁
-                if (height > heightUpLimit)
-                {
-                    RecycleSingleItem(last);
-                    m_UsingItem.RemoveLast();
-                    operation = true;
-                    continue;
-                }
-
-                var itemIndex = m_GetChildItemPrefabIndex(index);
-                height += m_ChildPrefab[itemIndex].RectTransform.rect.height;
-                //新增
-                if (height < heightUpLimit && index < m_ItemCount - 1 && !operation)
-                {
-                    var item = NewSingleItem(index + 1);
-                    m_UsingItem.AddLast(item);
-                    continue;
-                }
-
-                break;
             }
         }
 
@@ -476,12 +651,14 @@ namespace ScrollViewEx
             }
             for (int i = 0; i < m_ItemCount; i++)
             {
-                m_ItemHeightCache.Add(m_ContentHeight);
+                var height = m_GetItemHeight(i);
 
-                m_ContentHeight += m_GetItemHeight(i);
+                m_ItemHeightCache.Add(height);
+
+                m_ContentHeight += height;
                 if (i != m_ItemCount - 1)
                 {
-                    var paddingIndex = m_GetChildItemPaddingIndex(i);
+                    var paddingIndex = m_GetChildItemSpaceIndex(i, i + 1);
                     m_ContentHeight += m_AllSpacing[paddingIndex];
                 }
             }
@@ -496,91 +673,43 @@ namespace ScrollViewEx
         }
 
         /// <summary>
-        /// 校验高度缓存是否发生变化
+        /// 更新当前item位置
         /// </summary>
-        /// <returns></returns>
-        private void CheckHeightCache()
+        private void UpdateCurItemPos()
         {
-            var itemHeithtCache = m_ItemHeightCache.ToList();
-            var contentHeight = m_ContentHeight;
-
-            UpdateHeightCache();
-
-            if (m_ContentHeight != contentHeight)
-            {
-                UpdateContent();
-                return;
-            }
-
-            for (int i = 0; i < m_ItemHeightCache.Count; i++)
-            {
-                if (m_ItemHeightCache[i] != itemHeithtCache[i])
-                {
-                    UpdateContent();
-                    return;
-                }
-            }
-        }
-
-        /// <summary>
-        /// 数据坐标转化为content坐标
-        /// </summary>
-        /// <param name="itemPos"></param>
-        /// <param name="ignoreViewportLimit">忽略viewport位置限制</param>
-        /// <param name="ignoreViewportPivot">忽略viewport锚点</param>
-        /// <returns></returns>
-        private float DataPos2ContentPos(float itemPos, bool ignoreViewportLimit = true, bool ignoreViewportPivot = true)
-        {
-            itemPos = Mathf.Clamp(itemPos, 0, m_ItemCount);
-            int itemIndex = Mathf.Clamp(Mathf.FloorToInt(itemPos), 0, m_ItemCount - 1);
-            var height = m_ItemHeightCache[itemIndex];
-            var itemHeight = m_GetItemHeight(itemIndex);
-            height += itemHeight * (itemPos - itemIndex);
-            if (!ignoreViewportPivot)
-            {
-                height -= m_ViewportSnapPivot * m_ViewportRect.height;
-            }
-            if (!ignoreViewportLimit)
-            {
-                if (m_ContentHeight > m_ViewportRect.height && height > m_ContentHeight - m_ViewportRect.height)
-                {
-                    height = m_ContentHeight - m_ViewportRect.height;
-                }
-                height = Mathf.Max(0, height);
-            }
-            return height;
-        }
-
-        /// <summary>
-        /// content位置转化为数据坐标位置
-        /// </summary>
-        /// <param name="offset">偏移量</param>
-        /// <returns></returns>
-        private float ContentPercentPos2DataPos(float offset = 0)
-        {
-            var index = -1;
-            var height = m_ScrollRect.content.anchoredPosition.y;
+            var contentPos = m_ScrollRect.content.anchoredPosition.y;
             if (m_ScrollDirection == EScrollDirection.Down2Up)
             {
-                height = -height;
+                contentPos = -contentPos;
             }
-            height += offset;
-            for (int i = m_ItemHeightCache.Count - 1; i >= 0; i--)
+            //当前高度
+            var curHeight = contentPos + m_ViewportRect.height * m_ViewportPivot;
+            var curItem = m_UsingItem.First;
+            while (curHeight > 0 && null != curItem)
             {
-                if (m_ItemHeightCache[i] <= height)
+                var itemIndex = curItem.Value.CurIndex;
+                var itemHeight = m_GetItemHeight(itemIndex);
+                curHeight -= itemHeight;
+                if (curHeight <= 0)
                 {
-                    index = i;
+                    curHeight += itemHeight;
+                    m_CurItemPos = itemIndex + curHeight / itemHeight;
                     break;
                 }
+                var spaceHeight = m_AllSpacing[m_GetChildItemSpaceIndex(itemIndex, itemIndex + 1)];
+                curHeight -= spaceHeight;
+                if (curHeight <= 0)
+                {
+                    m_CurItemPos = itemIndex + 1;
+                    break;
+                }
+
+                curItem = curItem.Next;
+                if (null == curItem)
+                {
+                    m_CurItemPos = itemIndex + 1;
+                }
             }
-            index = Mathf.Max(0, index);
-            var top = m_ContentHeight;
-            if (index < m_ItemHeightCache.Count - 1)
-            {
-                top = m_ItemHeightCache[index + 1];
-            }
-            var bottom = m_ItemHeightCache[index];
-            return index + (height - bottom) / (top - bottom);
         }
 
         /// <summary>
@@ -596,7 +725,7 @@ namespace ScrollViewEx
             m_ItemCount = 0;
             m_RefreshItemAction = null;
             m_RecycleItemAction = null;
-            m_GetChildItemPaddingIndex = null;
+            m_GetChildItemSpaceIndex = null;
             m_GetChildItemPrefabIndex = null;
         }
 
@@ -606,9 +735,9 @@ namespace ScrollViewEx
         public void ForceUpdateShownItems()
         {
             m_NeedRefreshItemOnUpdate = false;
-            CheckHeightCache();
+            UpdateCurShowItemIndex();
+            UpdateContentSize();
             UpdateChildItem();
-            UpdateItemPosition();
             m_NeedRefreshItemOnUpdate = true;
         }
 
@@ -618,7 +747,7 @@ namespace ScrollViewEx
         /// <param name="newItemCount"></param>
         public void ChangeItemCount(int newItemCount)
         {
-            StartScrollView(newItemCount, m_RefreshItemAction, m_RecycleItemAction, m_GetChildItemPrefabIndex, m_GetChildItemPaddingIndex, m_GetItemHeight, m_OnScrollRectValueChangeItemAction, m_OnScrollRectValueChangeAction, m_CurItemPos);
+            StartScrollView(newItemCount, m_RefreshItemAction, m_RecycleItemAction, m_GetChildItemPrefabIndex, m_GetChildItemSpaceIndex, m_GetItemHeight, m_OnScrollRectValueChangeItemAction, m_OnScrollRectValueChangeAction, m_CurItemPos);
         }
 
         /// <summary>
@@ -641,7 +770,6 @@ namespace ScrollViewEx
             item.PrefabIndex = prefabIndex;
             item.CurIndex = index;
             item.ParentRecyle = this;
-            //item.RectTransform.
             m_RefreshItemAction?.Invoke(item);
             item.gameObject.SetActive(true);
             return item;
@@ -684,7 +812,7 @@ namespace ScrollViewEx
                 m_SnapStatus = ESnapStatus.PrepareToSnap;
             }
 
-            StartScrollView(m_ItemCount, m_RefreshItemAction, m_RecycleItemAction, m_GetChildItemPrefabIndex, m_GetChildItemPaddingIndex, m_GetItemHeight, m_OnScrollRectValueChangeItemAction, m_OnScrollRectValueChangeAction, position);
+            StartScrollView(m_ItemCount, m_RefreshItemAction, m_RecycleItemAction, m_GetChildItemPrefabIndex, m_GetChildItemSpaceIndex, m_GetItemHeight, m_OnScrollRectValueChangeItemAction, m_OnScrollRectValueChangeAction, position);
             if (autoSnap)
             {
                 StartAutoSnap();
@@ -722,8 +850,8 @@ namespace ScrollViewEx
             }
 
             //标准化位置
-            var curContentPos = Mathf.Abs(DataPos2ContentPos(m_CurItemPos, false));
-            var targetContentPos = Mathf.Abs(DataPos2ContentPos(targetPos, false, false));
+            var curContentPos = Mathf.Abs(CalcHeightByItemPos(m_CurItemPos));
+            var targetContentPos = Mathf.Abs(CalcHeightByItemPos(targetPos));
 
             //计算滚动
             if (Mathf.Abs(curContentPos - targetContentPos) > 0.1f)
@@ -782,8 +910,8 @@ namespace ScrollViewEx
             }
 
             //标准化位置
-            var curContentPos = Mathf.Abs(DataPos2ContentPos(m_CurItemPos, false));
-            var targetContentPos = Mathf.Abs(DataPos2ContentPos(targetPos, false, false));
+            var curContentPos = Mathf.Abs(CalcHeightByItemPos(m_CurItemPos));
+            var targetContentPos = Mathf.Abs(CalcHeightByItemPos(targetPos));
 
             //计算滚动
             if (Mathf.Abs(curContentPos - targetContentPos) > 0.1f)
@@ -922,9 +1050,14 @@ namespace ScrollViewEx
             }
 
             //计算是否回弹,如果回弹,不走自动定位
-            if (m_ScrollRect.movementType == ScrollRect.MovementType.Elastic)
+            if (!m_IsLoop && m_ScrollRect.movementType == ScrollRect.MovementType.Elastic)
             {
-                if (ContentPercentPos2DataPos() < 0 || ContentPercentPos2DataPos(m_ViewportRect.height) > m_ItemCount)
+                var contentPos = m_ScrollRect.content.anchoredPosition.y;
+                if (m_ScrollDirection == EScrollDirection.Down2Up)
+                {
+                    contentPos = -contentPos;
+                }
+                if (contentPos + m_ViewportRect.height > m_ContentHeight || contentPos < 0)
                 {
                     m_SnapStatus = ESnapStatus.NotNeedSnap;
                     return;
@@ -935,7 +1068,7 @@ namespace ScrollViewEx
             m_ScrollRect.StopMovement(); 
 
             m_SnapStatus = ESnapStatus.Snapping;
-            var itemPos = Mathf.Round(ContentPercentPos2DataPos(m_ViewportRect.height * m_ViewportSnapPivot) - m_ItemSnapPivot) + m_ItemSnapPivot;
+            var itemPos = /*Mathf.Round(ContentPercentPos2DataPos(m_ViewportRect.height * m_ViewportPivot) - m_ItemSnapPivot) +*/ m_ItemSnapPivot;
             ScrollToByTime(
                 targetPos: itemPos,
                 time: 0.3f,

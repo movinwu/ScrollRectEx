@@ -42,7 +42,8 @@ public class VerticalScrollRectPanel : MonoBehaviour
             //    }
             //    return baseHeight * (m_ChangeHeight ? 2f : 1f);
             //},
-            initItemPos: 5.5f);
+            initItemPos: 5.5f,
+            isLoop: true);
 
         StartCoroutine(ScrollTo());
     }
