@@ -42,10 +42,10 @@ public class VerticalScrollRectPanel : MonoBehaviour
             //    }
             //    return baseHeight * (m_ChangeHeight ? 2f : 1f);
             //},
-            initItemPos: 5.5f,
-            isLoop: true);
+            initItemPos: 0.2f,
+            isLoop: false);
 
-        StartCoroutine(ScrollTo());
+       StartCoroutine(ScrollTo());
     }
 
     private IEnumerator ScrollTo()
@@ -55,13 +55,13 @@ public class VerticalScrollRectPanel : MonoBehaviour
         //m_ChangeHeight = true;
         //scroll.ForceUpdateShownItems();
 
-        yield return new WaitForSeconds(5f);
+        //yield return new WaitForSeconds(5f);
 
-        scroll.JumpTo(0.3f);
+        //scroll.JumpTo(3.5f);
 
         yield return new WaitForSeconds(4f);
 
-        scroll.ScrollToBySpeed(1.6f, 100f, false, () =>
+        scroll.ScrollToBySpeed(1.6f, 300f, false, () =>
         {
             Debug.Log("¹ö¶¯Íê±Ï");
         });

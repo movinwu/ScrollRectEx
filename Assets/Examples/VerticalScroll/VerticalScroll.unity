@@ -656,7 +656,7 @@ MonoBehaviour:
   m_ScrollDirection: 0
   m_EnableAutoSnap: 0
   m_ItemSnapPivot: 0.3
-  m_ViewportSnapPivot: 0.2
+  m_ViewportPivot: 0.3
 --- !u!1001 &814903575
 PrefabInstance:
   m_ObjectHideFlags: 0
