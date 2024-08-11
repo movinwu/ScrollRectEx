@@ -43,9 +43,9 @@ public class VerticalScrollRectPanel : MonoBehaviour
             //    return baseHeight * (m_ChangeHeight ? 2f : 1f);
             //},
             initItemPos: 0.2f,
-            isLoop: false);
+            isLoop: true);
 
-       StartCoroutine(ScrollTo());
+       //StartCoroutine(ScrollTo());
     }
 
     private IEnumerator ScrollTo()

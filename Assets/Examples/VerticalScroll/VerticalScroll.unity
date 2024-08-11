@@ -655,6 +655,7 @@ MonoBehaviour:
   m_PreAllocLength: 200
   m_ScrollDirection: 0
   m_EnableAutoSnap: 0
+  m_AutoSnapTime: 0.3
   m_ItemSnapPivot: 0.3
   m_ViewportPivot: 0.3
 --- !u!1001 &814903575
