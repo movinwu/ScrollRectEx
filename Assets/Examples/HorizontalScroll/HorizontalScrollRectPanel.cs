@@ -6,11 +6,11 @@ using UnityEngine;
 using UnityEngine.UI;
 using Random = UnityEngine.Random;
 
-public class VerticalScrollRectPanel : MonoBehaviour
+public class HorizontalScrollRectPanel : MonoBehaviour
 {
-    public VerticalScrollRect scroll;
+    public HorizontalScrollRect scroll;
 
-    [SerializeField] private Line[] m_AllVerticalLine;
+    [SerializeField] private Line[] m_AllHorizontalLine;
 
     //private bool m_ChangeHeight;
 
@@ -18,14 +18,14 @@ public class VerticalScrollRectPanel : MonoBehaviour
     {
         //m_ChangeHeight = false;
 
-        for (int i = 0; i < m_AllVerticalLine.Length; i++)
+        for (int i = 0; i < m_AllHorizontalLine.Length; i++)
         {
-            m_AllVerticalLine[i].Refresh(0.1f * (i + 1));
+            m_AllHorizontalLine[i].Refresh(0.1f * (i + 1));
         }
 
         scroll.StartScrollView(
             itemCount: 16,
-            refreshItemAction: item => (item as VerticalScrollRectTestItem).Refresh(),
+            refreshItemAction: item => (item as HorizontalScrollRectTestItem).Refresh(),
             recycleItemAction: null,
             getchildItemPrefabIndex: index => index % 3,
             //getItemHeight: index =>

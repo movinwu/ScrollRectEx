@@ -2,7 +2,7 @@ using TMPro;
 using UnityEngine;
 
 [RequireComponent(typeof(RectTransform))]
-public class VerticalLine : MonoBehaviour
+public class Line : MonoBehaviour
 {
     [SerializeField] private bool m_IsVertical;
 

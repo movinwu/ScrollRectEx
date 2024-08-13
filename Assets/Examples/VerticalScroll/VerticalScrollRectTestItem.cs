@@ -6,7 +6,7 @@ using UnityEngine.UI;
 public class VerticalScrollRectTestItem : VerticalScrollRectViewItem
 {
 
-    [SerializeField] private VerticalLine[] m_AllVerticalLine;
+    [SerializeField] private Line[] m_AllVerticalLine;
 
     public void Refresh()
     {

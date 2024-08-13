@@ -653,8 +653,8 @@ MonoBehaviour:
   m_UpPadding: 15
   m_DownPadding: 25
   m_PreAllocLength: 200
-  m_ScrollDirection: 0
-  m_EnableAutoSnap: 0
+  m_ScrollDirection: 1
+  m_EnableAutoSnap: 1
   m_AutoSnapTime: 0.3
   m_ItemSnapPivot: 0.3
   m_ViewportPivot: 0.3
@@ -859,7 +859,7 @@ MonoBehaviour:
   m_HandleRect: {fileID: 874150241}
   m_Direction: 2
   m_Value: 1
-  m_Size: 0.24999999
+  m_Size: 0.25
   m_NumberOfSteps: 0
   m_OnValueChanged:
     m_PersistentCalls:
@@ -1766,8 +1766,8 @@ MonoBehaviour:
   m_TargetGraphic: {fileID: 1695937244}
   m_HandleRect: {fileID: 1695937243}
   m_Direction: 0
-  m_Value: 1
-  m_Size: 0.99999994
+  m_Value: 0
+  m_Size: 1
   m_NumberOfSteps: 0
   m_OnValueChanged:
     m_PersistentCalls:
